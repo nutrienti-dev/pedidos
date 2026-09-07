@@ -5,10 +5,12 @@ automaticamente en una Google Sheet.
 """
 import streamlit as st
 import gspread
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials as UserCredentials
+from google.oauth2.service_account import Credentials as SACredentials
+from google.auth.transport.requests import Request
 from datetime import date, datetime
 import uuid
-
+ 
 # --------------------------------------------------------------------------
 # Configuracion
 # --------------------------------------------------------------------------
@@ -18,30 +20,30 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed",
 )
-
+ 
 CLIENTS_SHEET_ID = "1LGjtIWTwrWSUw3LKC8jTmj-NMlwhygbAelD_C3hL-tQ"
 CLIENTS_TAB_CANDIDATES = ["Datos", "DATOS", "datos"]
-
+ 
 PRODUCTS_SHEET_ID = "1At3DzHvgQXnPueF7QK_KDvTeYyAN0oiE"
 PRODUCTS_TAB_CANDIDATES = ["Productos y servicios"]
-
+ 
 DEST_SHEET_ID = "1WKkqvaM27VDxCviwNPWKEI5xKblDH-vgQEi9_5oiQNY"
-
+ 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",
 ]
-
+ 
 CURRENCY = "$"
-
-
+ 
+ 
 def fmt_money(v):
     try:
         return f"{CURRENCY}{v:,.0f}".replace(",", ".")
     except (TypeError, ValueError):
         return f"{CURRENCY}0"
-
-
+ 
+ 
 # --------------------------------------------------------------------------
 # Estilos - branding de negocio de vegetales / restaurantes
 # --------------------------------------------------------------------------
@@ -82,7 +84,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
+ 
 st.markdown(
     """
     <div class="nutrienti-header">
@@ -92,27 +94,51 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
+ 
 # --------------------------------------------------------------------------
 # Conexion a Google Sheets
+#
+# Soporta dos formas de autenticacion (se usa la primera que encuentre en
+# st.secrets):
+#   1. gcp_oauth: credenciales OAuth de usuario (client_id/client_secret +
+#      refresh_token). Util cuando la organizacion bloquea la creacion de
+#      llaves de cuentas de servicio (politica iam.disableServiceAccountKeyCreation).
+#      Autentica como el usuario que autorizo el refresh_token, asi que ese
+#      usuario debe ser dueno (o tener acceso de editor) de las 3 hojas.
+#   2. gcp_service_account: cuenta de servicio clasica (requiere compartir
+#      cada hoja con el correo de la cuenta de servicio).
 # --------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def get_gspread_client():
-    if "gcp_service_account" not in st.secrets:
-        return None
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    return gspread.authorize(creds)
-
-
+    if "gcp_oauth" in st.secrets:
+        o = st.secrets["gcp_oauth"]
+        creds = UserCredentials(
+            token=None,
+            refresh_token=o["refresh_token"],
+            token_uri=o.get("token_uri", "https://oauth2.googleapis.com/token"),
+            client_id=o["client_id"],
+            client_secret=o["client_secret"],
+            scopes=SCOPES,
+        )
+        creds.refresh(Request())
+        return gspread.authorize(creds)
+ 
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = SACredentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        return gspread.authorize(creds)
+ 
+    return None
+ 
+ 
 def _find_worksheet(sh, candidates):
     titles = {ws.title.strip().lower(): ws for ws in sh.worksheets()}
     for c in candidates:
         if c.strip().lower() in titles:
             return titles[c.strip().lower()]
     return sh.sheet1
-
-
+ 
+ 
 @st.cache_data(ttl=300, show_spinner="Cargando lista de clientes...")
 def load_clients():
     gc = get_gspread_client()
@@ -128,8 +154,8 @@ def load_clients():
             names.append(v)
     names.sort(key=lambda s: s.lower())
     return names
-
-
+ 
+ 
 @st.cache_data(ttl=300, show_spinner="Cargando lista de productos...")
 def load_products():
     gc = get_gspread_client()
@@ -153,8 +179,8 @@ def load_products():
             products.append({"producto": desc, "unidad": unidad or "und", "precio": precio})
     products.sort(key=lambda p: p["producto"].lower())
     return products
-
-
+ 
+ 
 def append_order_to_sheet(order_id, fecha_solicitud, fecha_despacho, cliente, items, total_pedido):
     gc = get_gspread_client()
     sh = gc.open_by_key(DEST_SHEET_ID)
@@ -178,8 +204,8 @@ def append_order_to_sheet(order_id, fecha_solicitud, fecha_despacho, cliente, it
     # append_rows uses the Sheets API's append endpoint, which is safe for
     # concurrent submissions from multiple clients (no manual row-index math).
     ws.append_rows(rows, value_input_option="USER_ENTERED")
-
-
+ 
+ 
 # --------------------------------------------------------------------------
 # Estado de sesion
 # --------------------------------------------------------------------------
@@ -189,36 +215,36 @@ if "step" not in st.session_state:
     st.session_state.step = "form"
 if "last_order_id" not in st.session_state:
     st.session_state.last_order_id = None
-
+ 
 gc = get_gspread_client()
 if gc is None:
     st.error(
-        "No se encontraron credenciales de Google en `st.secrets['gcp_service_account']`. "
-        "Copia `.streamlit/secrets.toml.example` a `.streamlit/secrets.toml` y completa tus "
-        "credenciales de la cuenta de servicio (ver README.md)."
+        "No se encontraron credenciales de Google en `st.secrets`. Copia "
+        "`.streamlit/secrets.toml.example` a `.streamlit/secrets.toml` y completa "
+        "la seccion `[gcp_oauth]` (o `[gcp_service_account]`) — ver README.md."
     )
     st.stop()
-
+ 
 try:
     clients = load_clients()
     products = load_products()
 except Exception as e:
     st.error(f"No se pudo conectar con Google Sheets: {e}")
     st.stop()
-
+ 
 if not clients:
     st.warning("No se encontraron clientes en la hoja de origen.")
 if not products:
     st.warning("No se encontraron productos con precio en la hoja de origen.")
-
+ 
 product_names = [p["producto"] for p in products]
 product_by_name = {p["producto"]: p for p in products}
-
-
+ 
+ 
 def cart_total():
     return sum(it["total"] for it in st.session_state.cart)
-
-
+ 
+ 
 # --------------------------------------------------------------------------
 # PASO 1: formulario de pedido
 # --------------------------------------------------------------------------
@@ -228,17 +254,17 @@ if st.session_state.step == "form":
         fecha_solicitud = st.date_input("Fecha de la solicitud", value=date.today())
     with col2:
         fecha_despacho = st.date_input("Fecha de despacho deseada", value=date.today())
-
+ 
     cliente = st.selectbox(
         "Cliente",
         options=clients,
         index=None,
         placeholder="Selecciona tu restaurante...",
     )
-
+ 
     st.divider()
     st.subheader("Agregar productos")
-
+ 
     with st.form("add_item_form", clear_on_submit=True):
         c1, c2 = st.columns([2, 1])
         with c1:
@@ -250,9 +276,9 @@ if st.session_state.step == "form":
             )
         with c2:
             cantidad = st.number_input("Cantidad", min_value=0.0, value=1.0, step=0.5)
-
+ 
         add_clicked = st.form_submit_button("➕ Agregar al pedido", use_container_width=True)
-
+ 
         if add_clicked:
             if not producto_sel:
                 st.warning("Selecciona un producto antes de agregarlo.")
@@ -270,7 +296,7 @@ if st.session_state.step == "form":
                     }
                 )
                 st.rerun()
-
+ 
     # Carrito actual
     if st.session_state.cart:
         st.subheader("Tu pedido")
@@ -283,12 +309,12 @@ if st.session_state.step == "form":
             if cc5.button("🗑️", key=f"del_{idx}"):
                 st.session_state.cart.pop(idx)
                 st.rerun()
-
+ 
         st.markdown(
             f'<div class="cart-total">Total del pedido: {fmt_money(cart_total())}</div>',
             unsafe_allow_html=True,
         )
-
+ 
         st.write("")
         if st.button("Revisar y confirmar pedido ➜", type="primary", use_container_width=True):
             if not cliente:
@@ -305,19 +331,19 @@ if st.session_state.step == "form":
                 st.rerun()
     else:
         st.info("Aun no has agregado productos a tu pedido.")
-
+ 
 # --------------------------------------------------------------------------
 # PASO 2: revision y confirmacion
 # --------------------------------------------------------------------------
 elif st.session_state.step == "review":
     data = st.session_state.review_data
     st.subheader("Revisa tu pedido antes de enviarlo")
-
+ 
     r1, r2, r3 = st.columns(3)
     r1.metric("Cliente", data["cliente"])
     r2.metric("Fecha solicitud", data["fecha_solicitud"].strftime("%Y-%m-%d"))
     r3.metric("Fecha despacho", data["fecha_despacho"].strftime("%Y-%m-%d"))
-
+ 
     st.write("")
     for it in st.session_state.cart:
         cc1, cc2, cc3, cc4 = st.columns([3, 1.3, 1.3, 1.5])
@@ -325,18 +351,18 @@ elif st.session_state.step == "review":
         cc2.write(f"{it['cantidad']:g} {it['unidad']}")
         cc3.write(fmt_money(it["precio"]))
         cc4.write(fmt_money(it["total"]))
-
+ 
     st.markdown(
         f'<div class="cart-total">Total del pedido: {fmt_money(cart_total())}</div>',
         unsafe_allow_html=True,
     )
-
+ 
     st.write("")
     b1, b2 = st.columns(2)
     if b1.button("← Corregir pedido", use_container_width=True):
         st.session_state.step = "form"
         st.rerun()
-
+ 
     if b2.button("✅ Confirmar y enviar pedido", type="primary", use_container_width=True):
         order_id = f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
         try:
@@ -353,7 +379,7 @@ elif st.session_state.step == "review":
             st.rerun()
         except Exception as e:
             st.error(f"No se pudo enviar el pedido: {e}")
-
+ 
 # --------------------------------------------------------------------------
 # PASO 3: confirmacion final
 # --------------------------------------------------------------------------
@@ -362,9 +388,10 @@ elif st.session_state.step == "done":
     st.write(f"Numero de pedido: **{st.session_state.last_order_id}**")
     st.write(f"Total: **{fmt_money(cart_total())}**")
     st.write("Nuestro equipo se pondra en contacto para confirmar la entrega.")
-
+ 
     if st.button("Hacer otro pedido"):
         st.session_state.cart = []
         st.session_state.step = "form"
         st.session_state.last_order_id = None
         st.rerun()
+ 
