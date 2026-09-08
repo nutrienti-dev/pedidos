@@ -11,6 +11,9 @@ from google.auth.transport.requests import Request
 from datetime import date, datetime
 import difflib
 import uuid
+import csv as csv_module
+import os
+from collections import Counter
 
 # --------------------------------------------------------------------------
 # Configuracion
@@ -267,6 +270,157 @@ def append_order_to_sheet(
 
 
 # --------------------------------------------------------------------------
+# Matriz de precios por cliente (admin)
+#
+# "precios_por_cliente.csv" contiene precios REALES conocidos por cliente,
+# extraidos de las listas de precios de "BASE DE DATOS PRODUCTOS ACTIVOS.xlsx"
+# (columnas Nombre/Valor Lista Precios 1-6), ya cruzados contra la lista
+# oficial de clientes. "precios_sin_resolver.csv" son precios de esa misma
+# fuente que NO se pudieron asignar con confianza a un cliente exacto (nombre
+# ambiguo o cliente no encontrado) -- quedan pendientes de revision manual.
+#
+# build_price_matrix() crea/reconstruye la pestaña "matriz precios" en la
+# hoja de productos: una fila por cliente, una columna por producto. Cada
+# celda usa el precio real del cliente si se conoce (resaltada en verde); si
+# no, usa el precio mas comun (moda) entre los demas clientes para ese
+# producto: como el sistema de precios solo registra un precio especifico
+# para un cliente cuando existe un acuerdo/pedido real, tener un precio real
+# en la matriz equivale a "este cliente pide este producto habitualmente" --
+# por eso el resaltado en verde tambien sirve como indicador de productos
+# frecuentes por cliente.
+# --------------------------------------------------------------------------
+MATRIX_TAB_NAME = "matriz precios"
+CLIENT_PRICES_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "precios_por_cliente.csv")
+UNRESOLVED_PRICES_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "precios_sin_resolver.csv")
+
+REAL_PRICE_COLOR = {"red": 0.80, "green": 0.94, "blue": 0.80}  # verde claro
+HEADER_COLOR = {"red": 0.88, "green": 0.88, "blue": 0.88}
+
+
+def _read_csv_rows(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="", encoding="utf-8") as f:
+        return list(csv_module.DictReader(f))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_client_prices():
+    """Devuelve lista de (cliente, producto, precio) con precios reales
+    conocidos por cliente."""
+    out = []
+    for row in _read_csv_rows(CLIENT_PRICES_CSV):
+        try:
+            precio = float(row["Precio"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        cliente = (row.get("Cliente") or "").strip()
+        producto = (row.get("Producto") or "").strip()
+        if cliente and producto:
+            out.append((cliente, producto, precio))
+    return out
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_unresolved_prices():
+    """Precios de la fuente original que no se pudieron asignar a un cliente
+    exacto -- para revision manual, no se usan en la matriz."""
+    return _read_csv_rows(UNRESOLVED_PRICES_CSV)
+
+
+def build_price_matrix():
+    """Construye o reconstruye la pestaña 'matriz precios'. Devuelve un
+    diccionario con estadisticas (clientes, productos, celdas reales,
+    celdas de respaldo) para mostrar en pantalla."""
+    gc = get_gspread_client()
+    sh = gc.open_by_key(PRODUCTS_SHEET_ID)
+
+    client_prices = load_client_prices()
+    known = {}
+    prices_by_product = {}
+    for cliente, producto, precio in client_prices:
+        known[(cliente, producto)] = precio
+        prices_by_product.setdefault(producto, []).append(precio)
+
+    flat_price = {p["producto"]: p["precio"] for p in products}
+
+    fallback = {}
+    for p in product_names:
+        vals = prices_by_product.get(p)
+        fallback[p] = Counter(vals).most_common(1)[0][0] if vals else flat_price.get(p, 0)
+
+    try:
+        ws = sh.worksheet(MATRIX_TAB_NAME)
+        sh.del_worksheet(ws)
+    except gspread.exceptions.WorksheetNotFound:
+        pass
+    ws = sh.add_worksheet(title=MATRIX_TAB_NAME, rows=len(clients) + 1, cols=len(product_names) + 1)
+
+    header = ["Cliente"] + product_names
+    data_rows = []
+    real_cells = []  # (fila, columna) 1-based, tal como aparecen en la hoja
+    for r, cliente in enumerate(clients, start=2):
+        row = [cliente]
+        for c, producto in enumerate(product_names, start=2):
+            precio_real = known.get((cliente, producto))
+            if precio_real is not None:
+                row.append(precio_real)
+                real_cells.append((r, c))
+            else:
+                row.append(fallback[producto])
+        data_rows.append(row)
+
+    ws.update("A1", [header] + data_rows, value_input_option="USER_ENTERED")
+
+    requests = [
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": ws.id,
+                    "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 1},
+                },
+                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+            }
+        },
+        {
+            "repeatCell": {
+                "range": {"sheetId": ws.id, "startRowIndex": 0, "endRowIndex": 1},
+                "cell": {"userEnteredFormat": {"backgroundColor": HEADER_COLOR, "textFormat": {"bold": True}}},
+                "fields": "userEnteredFormat(backgroundColor,textFormat)",
+            }
+        },
+    ]
+    for (r, c) in real_cells:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": ws.id,
+                        "startRowIndex": r - 1,
+                        "endRowIndex": r,
+                        "startColumnIndex": c - 1,
+                        "endColumnIndex": c,
+                    },
+                    "cell": {"userEnteredFormat": {"backgroundColor": REAL_PRICE_COLOR}},
+                    "fields": "userEnteredFormat.backgroundColor",
+                }
+            }
+        )
+
+    CHUNK = 400
+    for i in range(0, len(requests), CHUNK):
+        sh.batch_update({"requests": requests[i : i + CHUNK]})
+
+    total_cells = len(clients) * len(product_names)
+    return {
+        "clientes": len(clients),
+        "productos": len(product_names),
+        "celdas_reales": len(real_cells),
+        "celdas_fallback": total_cells - len(real_cells),
+    }
+
+
+# --------------------------------------------------------------------------
 # Estado de sesion
 # --------------------------------------------------------------------------
 if "cart" not in st.session_state:
@@ -459,3 +613,44 @@ elif st.session_state.step == "done":
         st.session_state.step = "form"
         st.session_state.last_order_id = None
         st.rerun()
+
+# --------------------------------------------------------------------------
+# Admin oculto: construir/actualizar la matriz de precios por cliente.
+# Solo aparece si la URL de la app incluye ?admin=matriz -- un cliente
+# normal nunca ve ni activa esto por accidente.
+# --------------------------------------------------------------------------
+try:
+    _query_params = dict(st.query_params)
+except Exception:
+    _raw_qp = st.experimental_get_query_params()
+    _query_params = {k: (v[0] if isinstance(v, list) else v) for k, v in _raw_qp.items()}
+
+if _query_params.get("admin") == "matriz":
+    st.divider()
+    st.subheader("🔧 Admin: matriz de precios por cliente")
+    st.caption(
+        "Crea o actualiza la pestaña 'matriz precios' en la hoja de productos "
+        "(una fila por cliente, una columna por producto). Las celdas en "
+        "verde son precios reales conocidos para ese cliente -- esos mismos "
+        "productos son, en general, los que ese cliente pide habitualmente. "
+        "El resto de celdas usa el precio mas comun entre los demas clientes."
+    )
+    if st.button("Construir / actualizar matriz de precios"):
+        with st.spinner("Construyendo matriz..."):
+            try:
+                stats = build_price_matrix()
+                st.success(
+                    f"Listo: {stats['clientes']} clientes x {stats['productos']} productos. "
+                    f"{stats['celdas_reales']} celdas con precio real (resaltadas en verde), "
+                    f"{stats['celdas_fallback']} con precio de respaldo."
+                )
+            except Exception as e:
+                st.error(f"No se pudo construir la matriz: {e}")
+
+    _unresolved = load_unresolved_prices()
+    if _unresolved:
+        with st.expander(
+            f"⚠️ {len(_unresolved)} precios de la fuente original que no se pudieron "
+            "asignar a un cliente exacto (no estan en la matriz, revisar manualmente)"
+        ):
+            st.dataframe(_unresolved, use_container_width=True)
