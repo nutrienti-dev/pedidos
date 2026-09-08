@@ -8,9 +8,8 @@ import gspread
 from google.oauth2.credentials import Credentials as UserCredentials
 from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
-from datetime import date, datetime
+from datetime import date
 import difflib
-import uuid
 import csv as csv_module
 import os
 from collections import Counter
@@ -19,7 +18,7 @@ from collections import Counter
 # Configuracion
 # --------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Nutrienti | Pedidos",
+    page_title="Nutrienti | Ordenes de Cosecha",
     page_icon="🥬",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -38,16 +37,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-CURRENCY = "$"
-
-
-def fmt_money(v):
-    try:
-        return f"{CURRENCY}{v:,.0f}".replace(",", ".")
-    except (TypeError, ValueError):
-        return f"{CURRENCY}0"
-
-
 # --------------------------------------------------------------------------
 # Estilos - branding de negocio de vegetales / restaurantes
 # --------------------------------------------------------------------------
@@ -65,20 +54,6 @@ st.markdown(
         margin: 0;
         font-size: 1.6rem;
     }
-    .nutrienti-header p {
-        margin: 0.2rem 0 0 0;
-        opacity: 0.92;
-        font-size: 0.95rem;
-    }
-    .cart-total {
-        background: #F1F8E9;
-        border: 1px solid #C5E1A5;
-        border-radius: 10px;
-        padding: 0.9rem 1.1rem;
-        font-size: 1.15rem;
-        font-weight: 600;
-        color: #1B5E20;
-    }
     div[data-testid="stForm"] {
         border: 1px solid #E0E0E0;
         border-radius: 12px;
@@ -92,8 +67,7 @@ st.markdown(
 st.markdown(
     """
     <div class="nutrienti-header">
-        <h1>🥬 Nutrienti — Pedidos</h1>
-        <p>Frutas y verduras frescas para tu restaurante. Arma tu pedido a continuacion.</p>
+        <h1>🥬 Nutrienti - Ordenes de Cosecha</h1>
     </div>
     """,
     unsafe_allow_html=True,
@@ -217,32 +191,34 @@ DEST_HEADERS = [
     "Producto",
     "Unidad",
     "Cantidad",
-    "Precio Unitario",
-    "Total Linea",
-    "ID Pedido",
-    "Total Pedido",
 ]
+
+# Suficientemente ancho para cubrir encabezados viejos con mas columnas
+# (por ejemplo Precio Unitario / Total Linea / ID Pedido / Total Pedido de
+# la version anterior con precios) y dejarlos en blanco.
+_DEST_HEADER_CLEAR_RANGE = "A1:Z1"
 
 
 @st.cache_resource(show_spinner=False)
 def ensure_dest_headers():
-    """Se asegura de que la hoja de destino tenga el encabezado esperado
-    (incluyendo las columnas nuevas de sugerencia de cliente). No toca
-    ninguna fila de datos ya existente -- solo escribe la fila 1 si hace
-    falta. @st.cache_resource hace que esto corra una sola vez por proceso.
+    """Se asegura de que la hoja de destino tenga el encabezado esperado.
+    No toca ninguna fila de datos ya existente -- solo escribe la fila 1 si
+    hace falta, y limpia columnas de encabezado viejas que ya no se usan
+    (por ejemplo si la hoja traia columnas de precio de una version
+    anterior). @st.cache_resource hace que esto corra una sola vez por
+    proceso.
     """
     gc = get_gspread_client()
     sh = gc.open_by_key(DEST_SHEET_ID)
     ws = sh.sheet1
     current = ws.row_values(1)
     if current != DEST_HEADERS:
+        ws.batch_clear([_DEST_HEADER_CLEAR_RANGE])
         ws.update("A1", [DEST_HEADERS])
     return True
 
 
-def append_order_to_sheet(
-    order_id, fecha_solicitud, fecha_despacho, cliente, cliente_sugerido, similitud, items, total_pedido
-):
+def append_order_to_sheet(fecha_solicitud, fecha_despacho, cliente, cliente_sugerido, similitud, items):
     gc = get_gspread_client()
     sh = gc.open_by_key(DEST_SHEET_ID)
     ws = sh.sheet1
@@ -258,10 +234,6 @@ def append_order_to_sheet(
                 it["producto"],
                 it["unidad"],
                 it["cantidad"],
-                it["precio"],
-                it["total"],
-                order_id,
-                total_pedido,
             ]
         )
     # append_rows uses the Sheets API's append endpoint, which is safe for
@@ -465,8 +437,6 @@ if "cart" not in st.session_state:
     st.session_state.cart = []
 if "step" not in st.session_state:
     st.session_state.step = "form"
-if "last_order_id" not in st.session_state:
-    st.session_state.last_order_id = None
 
 gc = get_gspread_client()
 if gc is None:
@@ -494,10 +464,6 @@ product_names = [p["producto"] for p in products]
 product_by_name = {p["producto"]: p for p in products}
 
 
-def cart_total():
-    return sum(it["total"] for it in st.session_state.cart)
-
-
 # --------------------------------------------------------------------------
 # PASO 1: formulario de pedido
 # --------------------------------------------------------------------------
@@ -509,18 +475,10 @@ if st.session_state.step == "form":
         fecha_despacho = st.date_input("Fecha de despacho deseada", value=date.today())
 
     cliente = st.text_input(
-        "Nombre de tu restaurante",
-        placeholder="Escribe el nombre de tu restaurante...",
-        help="Escribe el nombre tal como lo conoces. No mostramos la lista de otros clientes.",
+        "Nombre de Punto",
+        placeholder="Escribe el nombre de tu punto...",
+        help="Escribe el nombre tal como lo conoces. No mostramos la lista de otros puntos.",
     )
-
-    # Si ya hay productos en el carrito y el cliente ajusta el nombre escrito
-    # (por ejemplo corrige un error de tipeo), se recalculan los precios ya
-    # agregados para que siempre reflejen el precio del nombre actual.
-    if st.session_state.cart and cliente and cliente.strip():
-        for it in st.session_state.cart:
-            it["precio"] = price_for_client(cliente, it["producto"], clients)
-            it["total"] = round(it["precio"] * it["cantidad"])
 
     st.divider()
     st.subheader("Agregar productos")
@@ -540,22 +498,17 @@ if st.session_state.step == "form":
         add_clicked = st.form_submit_button("➕ Agregar al pedido", use_container_width=True)
 
         if add_clicked:
-            if not cliente or not cliente.strip():
-                st.warning("Escribe el nombre de tu restaurante antes de agregar productos (lo usamos para tu precio).")
-            elif not producto_sel:
+            if not producto_sel:
                 st.warning("Selecciona un producto antes de agregarlo.")
             elif cantidad <= 0:
                 st.warning("La cantidad debe ser mayor a 0.")
             else:
                 p = product_by_name[producto_sel]
-                precio = price_for_client(cliente, p["producto"], clients)
                 st.session_state.cart.append(
                     {
                         "producto": p["producto"],
                         "unidad": p["unidad"],
-                        "precio": precio,
                         "cantidad": cantidad,
-                        "total": round(precio * cantidad),
                     }
                 )
                 st.rerun()
@@ -564,24 +517,17 @@ if st.session_state.step == "form":
     if st.session_state.cart:
         st.subheader("Tu pedido")
         for idx, it in enumerate(st.session_state.cart):
-            cc1, cc2, cc3, cc4, cc5 = st.columns([3, 1.3, 1.3, 1.5, 0.6])
+            cc1, cc2, cc3 = st.columns([3, 1.5, 0.6])
             cc1.write(it["producto"])
             cc2.write(f"{it['cantidad']:g} {it['unidad']}")
-            cc3.write(fmt_money(it["precio"]))
-            cc4.write(fmt_money(it["total"]))
-            if cc5.button("🗑️", key=f"del_{idx}"):
+            if cc3.button("🗑️", key=f"del_{idx}"):
                 st.session_state.cart.pop(idx)
                 st.rerun()
-
-        st.markdown(
-            f'<div class="cart-total">Total del pedido: {fmt_money(cart_total())}</div>',
-            unsafe_allow_html=True,
-        )
 
         st.write("")
         if st.button("Revisar y confirmar pedido ➜", type="primary", use_container_width=True):
             if not cliente or not cliente.strip():
-                st.warning("Escribe el nombre de tu restaurante antes de continuar.")
+                st.warning("Escribe el nombre de tu punto antes de continuar.")
             elif not st.session_state.cart:
                 st.warning("Agrega al menos un producto antes de continuar.")
             else:
@@ -606,22 +552,15 @@ elif st.session_state.step == "review":
     st.subheader("Revisa tu pedido antes de enviarlo")
 
     r1, r2, r3 = st.columns(3)
-    r1.metric("Cliente", data["cliente"])
+    r1.metric("Punto", data["cliente"])
     r2.metric("Fecha solicitud", data["fecha_solicitud"].strftime("%Y-%m-%d"))
     r3.metric("Fecha despacho", data["fecha_despacho"].strftime("%Y-%m-%d"))
 
     st.write("")
     for it in st.session_state.cart:
-        cc1, cc2, cc3, cc4 = st.columns([3, 1.3, 1.3, 1.5])
+        cc1, cc2 = st.columns([3, 1.5])
         cc1.write(f"**{it['producto']}**")
         cc2.write(f"{it['cantidad']:g} {it['unidad']}")
-        cc3.write(fmt_money(it["precio"]))
-        cc4.write(fmt_money(it["total"]))
-
-    st.markdown(
-        f'<div class="cart-total">Total del pedido: {fmt_money(cart_total())}</div>',
-        unsafe_allow_html=True,
-    )
 
     st.write("")
     b1, b2 = st.columns(2)
@@ -630,19 +569,15 @@ elif st.session_state.step == "review":
         st.rerun()
 
     if b2.button("✅ Confirmar y enviar pedido", type="primary", use_container_width=True):
-        order_id = f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
         try:
             append_order_to_sheet(
-                order_id=order_id,
                 fecha_solicitud=data["fecha_solicitud"],
                 fecha_despacho=data["fecha_despacho"],
                 cliente=data["cliente"],
                 cliente_sugerido=data["cliente_sugerido"],
                 similitud=data["similitud"],
                 items=st.session_state.cart,
-                total_pedido=cart_total(),
             )
-            st.session_state.last_order_id = order_id
             st.session_state.step = "done"
             st.rerun()
         except Exception as e:
@@ -653,14 +588,11 @@ elif st.session_state.step == "review":
 # --------------------------------------------------------------------------
 elif st.session_state.step == "done":
     st.success("🎉 ¡Tu pedido fue enviado con exito!")
-    st.write(f"Numero de pedido: **{st.session_state.last_order_id}**")
-    st.write(f"Total: **{fmt_money(cart_total())}**")
     st.write("Nuestro equipo se pondra en contacto para confirmar la entrega.")
 
     if st.button("Hacer otro pedido"):
         st.session_state.cart = []
         st.session_state.step = "form"
-        st.session_state.last_order_id = None
         st.rerun()
 
 # --------------------------------------------------------------------------
