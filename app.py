@@ -328,13 +328,18 @@ def load_unresolved_prices():
     return _read_csv_rows(UNRESOLVED_PRICES_CSV)
 
 
-def build_price_matrix():
-    """Construye o reconstruye la pestaña 'matriz precios'. Devuelve un
-    diccionario con estadisticas (clientes, productos, celdas reales,
-    celdas de respaldo) para mostrar en pantalla."""
-    gc = get_gspread_client()
-    sh = gc.open_by_key(PRODUCTS_SHEET_ID)
-
+def get_pricing_data():
+    """Devuelve (known, fallback):
+    - known: dict {(cliente, producto): precio} con los precios reales
+      conocidos por cliente (de precios_por_cliente.csv).
+    - fallback: dict {producto: precio} con el precio a usar cuando no hay
+      precio real conocido para un cliente -- el mas comun (moda) entre los
+      demas clientes para ese producto, o el precio general de la hoja de
+      productos si ningun cliente tiene precio conocido.
+    Se recalcula (barato, son ~46 productos / ~280 precios conocidos) cada
+    vez que se llama; no se cachea aca porque depende de `products`, que ya
+    esta cacheado por separado con `load_products()`.
+    """
     client_prices = load_client_prices()
     known = {}
     prices_by_product = {}
@@ -348,6 +353,39 @@ def build_price_matrix():
     for p in product_names:
         vals = prices_by_product.get(p)
         fallback[p] = Counter(vals).most_common(1)[0][0] if vals else flat_price.get(p, 0)
+
+    return known, fallback
+
+
+# Umbral de similitud (mismo criterio que best_client_match) a partir del
+# cual se confia en el nombre escrito por el cliente para buscarle SU precio
+# real. Por debajo de esto, se usa el precio de respaldo (moda) en vez de
+# arriesgarse a cobrarle el precio negociado de otro cliente distinto.
+CLIENT_PRICE_MATCH_THRESHOLD = 85.0
+
+
+def price_for_client(cliente_texto, producto, clients):
+    """Precio que le corresponde a `producto` para el cliente que escribio
+    `cliente_texto`. Usa el precio real del cliente mas parecido si la
+    similitud supera CLIENT_PRICE_MATCH_THRESHOLD; si no, usa el precio de
+    respaldo (moda entre los demas clientes) para ese producto."""
+    known, fallback = get_pricing_data()
+    sugerido, similitud = best_client_match(cliente_texto, clients)
+    if sugerido and similitud >= CLIENT_PRICE_MATCH_THRESHOLD:
+        precio_real = known.get((sugerido, producto))
+        if precio_real is not None:
+            return precio_real
+    return fallback.get(producto, 0)
+
+
+def build_price_matrix():
+    """Construye o reconstruye la pestaña 'matriz precios'. Devuelve un
+    diccionario con estadisticas (clientes, productos, celdas reales,
+    celdas de respaldo) para mostrar en pantalla."""
+    gc = get_gspread_client()
+    sh = gc.open_by_key(PRODUCTS_SHEET_ID)
+
+    known, fallback = get_pricing_data()
 
     try:
         ws = sh.worksheet(MATRIX_TAB_NAME)
@@ -476,6 +514,14 @@ if st.session_state.step == "form":
         help="Escribe el nombre tal como lo conoces. No mostramos la lista de otros clientes.",
     )
 
+    # Si ya hay productos en el carrito y el cliente ajusta el nombre escrito
+    # (por ejemplo corrige un error de tipeo), se recalculan los precios ya
+    # agregados para que siempre reflejen el precio del nombre actual.
+    if st.session_state.cart and cliente and cliente.strip():
+        for it in st.session_state.cart:
+            it["precio"] = price_for_client(cliente, it["producto"], clients)
+            it["total"] = round(it["precio"] * it["cantidad"])
+
     st.divider()
     st.subheader("Agregar productos")
 
@@ -494,19 +540,22 @@ if st.session_state.step == "form":
         add_clicked = st.form_submit_button("➕ Agregar al pedido", use_container_width=True)
 
         if add_clicked:
-            if not producto_sel:
+            if not cliente or not cliente.strip():
+                st.warning("Escribe el nombre de tu restaurante antes de agregar productos (lo usamos para tu precio).")
+            elif not producto_sel:
                 st.warning("Selecciona un producto antes de agregarlo.")
             elif cantidad <= 0:
                 st.warning("La cantidad debe ser mayor a 0.")
             else:
                 p = product_by_name[producto_sel]
+                precio = price_for_client(cliente, p["producto"], clients)
                 st.session_state.cart.append(
                     {
                         "producto": p["producto"],
                         "unidad": p["unidad"],
-                        "precio": p["precio"],
+                        "precio": precio,
                         "cantidad": cantidad,
-                        "total": round(p["precio"] * cantidad),
+                        "total": round(precio * cantidad),
                     }
                 )
                 st.rerun()
