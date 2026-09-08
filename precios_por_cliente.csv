@@ -1,0 +1,279 @@
+Cliente,Producto,Precio,NombreOriginalListaPrecios,TipoResolucion
+Locall Burger,Cogollo Europeo x Unidad,1600.0,Local Burger,auto
+Home Burger,Cogollo Europeo x Unidad,1265.0,Home burgers,auto
+Salvo Patria,Cogollo Europeo x Unidad,1600.0,Salvo patria,exact
+Masa,Cogollo Europeo x Unidad,2000.0,Masa,exact
+Burger Maker,Cogollo Europeo x Unidad,2000.0,Burger maker,exact
+Cabrera CDI,Cogollo Europeo x Kilo,10999.0,Cabrera,chain_broadcast
+Cabrera Colina,Cogollo Europeo x Kilo,10999.0,Cabrera,chain_broadcast
+Cabrera Salitre,Cogollo Europeo x Kilo,10999.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Cogollo Europeo x Kilo,10999.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Cogollo Europeo x Kilo,10999.0,Cabrera,chain_broadcast
+Cabrera zona t,Cogollo Europeo x Kilo,10999.0,Cabrera,chain_broadcast
+Aborigen burguer,Cogollo Europeo x Kilo,13999.0,Aborigen Burger,auto
+Seratta 114,Cogollo Europeo x Kilo,9999.0,Seratta,chain_broadcast
+Seratta Atlantis,Cogollo Europeo x Kilo,9999.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Cogollo Europeo x Kilo,9999.0,Seratta,chain_broadcast
+La Biferia 109,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La biferia 79,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La biferia atlantis,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La Biferia Chapinero,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La biferia Colina,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La biferia multiplaza (La Felicidad),Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La biferia planta,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La biferia Santafe,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La Biferia Americas,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+La Biferia Plaza Central,Cogollo Europeo Hidroponico x Kilo,10390.0,La biferia,chain_broadcast
+Seratta 114,Cogollo Europeo Hidroponico x Kilo,9999.0,Seratta,chain_broadcast
+Seratta Atlantis,Cogollo Europeo Hidroponico x Kilo,9999.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Cogollo Europeo Hidroponico x Kilo,9999.0,Seratta,chain_broadcast
+Storia de Amore 122,Cogollo Europeo Hidroponico x Kilo,11490.0,Storia de Amore,chain_broadcast
+Storia de Amore 82,Cogollo Europeo Hidroponico x Kilo,11490.0,Storia de Amore,chain_broadcast
+Storia de amore 93,Cogollo Europeo Hidroponico x Kilo,11490.0,Storia de Amore,chain_broadcast
+Masa,Cogollo Europeo Hidroponico x Unidad,2000.0,Masa,exact
+Crick 59,Cogollo Europeo Hidroponico x Unidad,1799.0,Crick,chain_broadcast
+Crick 64,Cogollo Europeo Hidroponico x Unidad,1799.0,Crick,chain_broadcast
+Crick Cedritos 147,Cogollo Europeo Hidroponico x Unidad,1799.0,Crick,chain_broadcast
+Crick Colina,Cogollo Europeo Hidroponico x Unidad,1799.0,Crick,chain_broadcast
+Burger Maker,Cogollo Europeo Hidroponico x Unidad,1800.0,Burger maker,exact
+Home Burger,Cogollo Europeo Hidroponico x Unidad,1265.0,Home burgers,auto
+Mistral Fabrica,Cogollo Europeo Deshojado Ensalada x Kilo,15999.0,Mistral,chain_broadcast
+Mistral Chapinero,Cogollo Europeo Deshojado Ensalada x Kilo,15999.0,Mistral,chain_broadcast
+Mistral Nogal,Cogollo Europeo Deshojado Ensalada x Kilo,15999.0,Mistral,chain_broadcast
+Mistral Soledad,Cogollo Europeo Deshojado Ensalada x Kilo,15999.0,Mistral,chain_broadcast
+Juan burgers,Cogollo Europeo Deshojado Ensalada x Kilo,14500.0,Juan burges,auto
+360 Burger,Cogollo Europeo Deshojado Ensalada x Kilo,16675.0,360 burger,exact
+il Forno 109,Cogollo Europeo Deshojado Ensalada x Kilo,11768.0,Il forno,chain_broadcast
+il Forno 93,Cogollo Europeo Deshojado Ensalada x Kilo,11768.0,Il forno,chain_broadcast
+il Forno Nuesto Bogota,Cogollo Europeo Deshojado Ensalada x Kilo,11768.0,Il forno,chain_broadcast
+il Forno Plaza Central,Cogollo Europeo Deshojado Ensalada x Kilo,11768.0,Il forno,chain_broadcast
+il Forno titan plaza,Cogollo Europeo Deshojado Ensalada x Kilo,11768.0,Il forno,chain_broadcast
+il Forno zona g,Cogollo Europeo Deshojado Ensalada x Kilo,11768.0,Il forno,chain_broadcast
+Seratta 114,Boch Choy x Kilo,8499.0,Seratta,chain_broadcast
+Seratta Atlantis,Boch Choy x Kilo,8499.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Boch Choy x Kilo,8499.0,Seratta,chain_broadcast
+Burger Maker,Cebollin por Kilo,17999.0,Burger maker,exact
+Osaka,Cebollin por Kilo,16999.0,osaka,exact
+Burger Maker,Cilantro x Kilo,9990.0,Burger maker,exact
+Osaka,Cilantro x Kilo,7999.0,osaka,exact
+Mistral Fabrica,Espinaca Baby x Kilo,12499.0,Mistral,chain_broadcast
+Mistral Chapinero,Espinaca Baby x Kilo,12499.0,Mistral,chain_broadcast
+Mistral Nogal,Espinaca Baby x Kilo,12499.0,Mistral,chain_broadcast
+Mistral Soledad,Espinaca Baby x Kilo,12499.0,Mistral,chain_broadcast
+Cabrera CDI,Espinaca Baby x Kilo,11790.0,Cabrera,chain_broadcast
+Cabrera Colina,Espinaca Baby x Kilo,11790.0,Cabrera,chain_broadcast
+Cabrera Salitre,Espinaca Baby x Kilo,11790.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Espinaca Baby x Kilo,11790.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Espinaca Baby x Kilo,11790.0,Cabrera,chain_broadcast
+Cabrera zona t,Espinaca Baby x Kilo,11790.0,Cabrera,chain_broadcast
+Storia de Amore 122,Kale Rizado x Kilo,11999.0,Storia de Amore,chain_broadcast
+Storia de Amore 82,Kale Rizado x Kilo,11999.0,Storia de Amore,chain_broadcast
+Storia de amore 93,Kale Rizado x Kilo,11999.0,Storia de Amore,chain_broadcast
+Seratta 114,Kale Rizado x Kilo,11999.0,Seratta,chain_broadcast
+Seratta Atlantis,Kale Rizado x Kilo,11999.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Kale Rizado x Kilo,11999.0,Seratta,chain_broadcast
+Seratta 114,Lechuga Batavia x Kilo,4500.0,Seratta,chain_broadcast
+Seratta Atlantis,Lechuga Batavia x Kilo,4500.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Lechuga Batavia x Kilo,4500.0,Seratta,chain_broadcast
+Cabrera CDI,Lechuga Crespa Morada x Unidad,1999.0,Cabrera,chain_broadcast
+Cabrera Colina,Lechuga Crespa Morada x Unidad,1999.0,Cabrera,chain_broadcast
+Cabrera Salitre,Lechuga Crespa Morada x Unidad,1999.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Lechuga Crespa Morada x Unidad,1999.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Lechuga Crespa Morada x Unidad,1999.0,Cabrera,chain_broadcast
+Cabrera zona t,Lechuga Crespa Morada x Unidad,1999.0,Cabrera,chain_broadcast
+La Bodegueta 85,Lechuga Crespa Morada x Unidad,6500.0,La bodegueta,review_accept
+Famiglia 85,Lechuga Crespa Morada x Unidad,12999.0,Famiglia,chain_broadcast
+Famiglia chapinero,Lechuga Crespa Morada x Unidad,12999.0,Famiglia,chain_broadcast
+Famiglia quinta camacho,Lechuga Crespa Morada x Unidad,12999.0,Famiglia,chain_broadcast
+Famiglia castellana,Lechuga Crespa Morada x Unidad,12999.0,Famiglia,chain_broadcast
+Famiglia universidades,Lechuga Crespa Morada x Unidad,12999.0,Famiglia,chain_broadcast
+Oliveto 107,Lechuga Crespa Morada x Kilo,11999.0,Oliveto,chain_broadcast
+Oliveto Colina,Lechuga Crespa Morada x Kilo,11999.0,Oliveto,chain_broadcast
+Oliveto La soledad,Lechuga Crespa Morada x Kilo,11999.0,Oliveto,chain_broadcast
+Oliveto Rosales,Lechuga Crespa Morada x Kilo,11999.0,Oliveto,chain_broadcast
+Oliveto Usaquen,Lechuga Crespa Morada x Kilo,11999.0,Oliveto,chain_broadcast
+Oliveto Maloka,Lechuga Crespa Morada x Kilo,11999.0,Oliveto,chain_broadcast
+Seratta 114,Lechuga Crespa Morada x Kilo,9500.0,Seratta,chain_broadcast
+Seratta Atlantis,Lechuga Crespa Morada x Kilo,9500.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Lechuga Crespa Morada x Kilo,9500.0,Seratta,chain_broadcast
+La Bodegueta 85,Lechuga Crespa Morada x Kilo,9500.0,La bodegueta,review_accept
+Famiglia 85,Lechuga Crespa Morada x Kilo,12999.0,Famiglia,chain_broadcast
+Famiglia chapinero,Lechuga Crespa Morada x Kilo,12999.0,Famiglia,chain_broadcast
+Famiglia quinta camacho,Lechuga Crespa Morada x Kilo,12999.0,Famiglia,chain_broadcast
+Famiglia castellana,Lechuga Crespa Morada x Kilo,12999.0,Famiglia,chain_broadcast
+Famiglia universidades,Lechuga Crespa Morada x Kilo,12999.0,Famiglia,chain_broadcast
+Seratta 114,Lechuga Crespa Verde x Unidad,7999.0,Seratta,chain_broadcast
+Seratta Atlantis,Lechuga Crespa Verde x Unidad,7999.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Lechuga Crespa Verde x Unidad,7999.0,Seratta,chain_broadcast
+Cabrera CDI,Lechuga Crespa Verde x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera Colina,Lechuga Crespa Verde x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera Salitre,Lechuga Crespa Verde x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Lechuga Crespa Verde x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Lechuga Crespa Verde x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera zona t,Lechuga Crespa Verde x Unidad,1699.0,Cabrera,chain_broadcast
+Chorizo artesano,Lechuga Crespa Verde x Unidad,1600.0,Chorizo artesano,exact
+Oliveto 107,Lechuga Crespa Verde x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto Colina,Lechuga Crespa Verde x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto La soledad,Lechuga Crespa Verde x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto Rosales,Lechuga Crespa Verde x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto Usaquen,Lechuga Crespa Verde x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto Maloka,Lechuga Crespa Verde x Kilo,10999.0,Oliveto,chain_broadcast
+Seratta 114,Lechuga Crespa Verde x Kilo,7999.0,Seratta,chain_broadcast
+Seratta Atlantis,Lechuga Crespa Verde x Kilo,7999.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Lechuga Crespa Verde x Kilo,7999.0,Seratta,chain_broadcast
+Oye pez,Lechuga Crespa Verde x Kilo,7999.0,Oye pez,exact
+La Bodegueta 85,Lechuga Crespa Verde x Kilo,6500.0,La bodegueta,review_accept
+Cabrera CDI,Lechuga Crespa Verde Tierra x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera Colina,Lechuga Crespa Verde Tierra x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera Salitre,Lechuga Crespa Verde Tierra x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Lechuga Crespa Verde Tierra x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Lechuga Crespa Verde Tierra x Unidad,1699.0,Cabrera,chain_broadcast
+Cabrera zona t,Lechuga Crespa Verde Tierra x Unidad,1699.0,Cabrera,chain_broadcast
+Chorizo artesano,Lechuga Crespa Verde Tierra x Unidad,1600.0,Chorizo artesano,exact
+Montolivo centro mayor,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Montolivo colina,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Montolivo gran estacion,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Montolivo Plaza Central,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Montolivo Plaza de las Americas,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Montolivo santa fe,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Montolivo Salitre,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Montolivo titan plaza,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Montolivo Unicentro,Lechuga Crespa Verde de Tierra x Kilo,6399.0,Montolivo,chain_broadcast
+Oliveto 107,Lechuga Crespa Verde de Tierra x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto Colina,Lechuga Crespa Verde de Tierra x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto La soledad,Lechuga Crespa Verde de Tierra x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto Rosales,Lechuga Crespa Verde de Tierra x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto Usaquen,Lechuga Crespa Verde de Tierra x Kilo,10999.0,Oliveto,chain_broadcast
+Oliveto Maloka,Lechuga Crespa Verde de Tierra x Kilo,10999.0,Oliveto,chain_broadcast
+Krudo burger,Lechuga Romana x Unidad,2500.0,krudo burger,exact
+Cabrera CDI,Lechuga Romana x Unidad,2070.0,Cabrera,chain_broadcast
+Cabrera Colina,Lechuga Romana x Unidad,2070.0,Cabrera,chain_broadcast
+Cabrera Salitre,Lechuga Romana x Unidad,2070.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Lechuga Romana x Unidad,2070.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Lechuga Romana x Unidad,2070.0,Cabrera,chain_broadcast
+Cabrera zona t,Lechuga Romana x Unidad,2070.0,Cabrera,chain_broadcast
+Boom Burger,Lechuga Romana x Unidad,2500.0,Boom burger,exact
+La Biferia 109,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La biferia 79,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La biferia atlantis,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La Biferia Chapinero,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La biferia Colina,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La biferia multiplaza (La Felicidad),Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La biferia planta,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La biferia Santafe,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La Biferia Americas,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+La Biferia Plaza Central,Lechuga Romana x Kilo,9290.0,La biferia,chain_broadcast
+Storia de Amore 122,Lechuga Romana x Kilo,10990.0,Storia de Amore,chain_broadcast
+Storia de Amore 82,Lechuga Romana x Kilo,10990.0,Storia de Amore,chain_broadcast
+Storia de amore 93,Lechuga Romana x Kilo,10990.0,Storia de Amore,chain_broadcast
+Oliveto 107,Lechuga Romana x Kilo,12866.0,Oliveto,chain_broadcast
+Oliveto Colina,Lechuga Romana x Kilo,12866.0,Oliveto,chain_broadcast
+Oliveto La soledad,Lechuga Romana x Kilo,12866.0,Oliveto,chain_broadcast
+Oliveto Rosales,Lechuga Romana x Kilo,12866.0,Oliveto,chain_broadcast
+Oliveto Usaquen,Lechuga Romana x Kilo,12866.0,Oliveto,chain_broadcast
+Oliveto Maloka,Lechuga Romana x Kilo,12866.0,Oliveto,chain_broadcast
+La Bodegueta 85,Lechuga Romana x Kilo,10990.0,La bodegueta,review_accept
+Cabrera CDI,Rugula Rocket x Kilo,12305.0,Cabrera,chain_broadcast
+Cabrera Colina,Rugula Rocket x Kilo,12305.0,Cabrera,chain_broadcast
+Cabrera Salitre,Rugula Rocket x Kilo,12305.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Rugula Rocket x Kilo,12305.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Rugula Rocket x Kilo,12305.0,Cabrera,chain_broadcast
+Cabrera zona t,Rugula Rocket x Kilo,12305.0,Cabrera,chain_broadcast
+Oliveto 107,Rugula Rocket x Kilo,12999.0,Oliveto,chain_broadcast
+Oliveto Colina,Rugula Rocket x Kilo,12999.0,Oliveto,chain_broadcast
+Oliveto La soledad,Rugula Rocket x Kilo,12999.0,Oliveto,chain_broadcast
+Oliveto Rosales,Rugula Rocket x Kilo,12999.0,Oliveto,chain_broadcast
+Oliveto Usaquen,Rugula Rocket x Kilo,12999.0,Oliveto,chain_broadcast
+Oliveto Maloka,Rugula Rocket x Kilo,12999.0,Oliveto,chain_broadcast
+Seratta 114,Rugula Rocket x Kilo,10999.0,Seratta,chain_broadcast
+Seratta Atlantis,Rugula Rocket x Kilo,10999.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Rugula Rocket x Kilo,10999.0,Seratta,chain_broadcast
+Storia de Amore 122,Rugula Selvatica x Kilo,17999.0,Storia de Amore,chain_broadcast
+Storia de Amore 82,Rugula Selvatica x Kilo,17999.0,Storia de Amore,chain_broadcast
+Storia de amore 93,Rugula Selvatica x Kilo,17999.0,Storia de Amore,chain_broadcast
+Famiglia 85,Rugula Selvatica x Kilo,17999.0,Famiglia,chain_broadcast
+Famiglia chapinero,Rugula Selvatica x Kilo,17999.0,Famiglia,chain_broadcast
+Famiglia quinta camacho,Rugula Selvatica x Kilo,17999.0,Famiglia,chain_broadcast
+Famiglia castellana,Rugula Selvatica x Kilo,17999.0,Famiglia,chain_broadcast
+Famiglia universidades,Rugula Selvatica x Kilo,17999.0,Famiglia,chain_broadcast
+Rabbit,Rugula Selvatica x Kilo,18000.0,Rabit,auto
+Poke 14 Nuestro Bogota,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 11 (la 93),Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 16 Aeropuerto,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 7 Cedritos,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 20 Chia Fontanar,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 6 Chia San Roque,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 8 city u,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 5 Colina Campestre,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 12 Gran Estacion,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 17 internacional,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 21 Multiplaza,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 15 Parque Colina,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 3 Pedagogica,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 19 Plaza central,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 2 Rosales,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 1 Santa Fe,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 4 Usaquen,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 23 Maloka,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 25 Mall plaza,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Poke 13 Titan,Mix poke x kilo,17000.0,Poke,chain_broadcast
+Seratta 114,Radiccio x kilo,14999.0,Seratta,chain_broadcast
+Seratta Atlantis,Radiccio x kilo,14999.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Radiccio x kilo,14999.0,Seratta,chain_broadcast
+Osaka,Mix asiatico x kilo,11999.0,osaka,exact
+Don Doh,Mix asiatico x kilo,11999.0,Don doh,exact
+Casa Lelyte,Mix asiatico x kilo,12499.0,Casa lelyte,exact
+Cabrera CDI,Mix mizunas deshojado x kilo,11399.0,Cabrera,chain_broadcast
+Cabrera Colina,Mix mizunas deshojado x kilo,11399.0,Cabrera,chain_broadcast
+Cabrera Salitre,Mix mizunas deshojado x kilo,11399.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Mix mizunas deshojado x kilo,11399.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Mix mizunas deshojado x kilo,11399.0,Cabrera,chain_broadcast
+Cabrera zona t,Mix mizunas deshojado x kilo,11399.0,Cabrera,chain_broadcast
+Seratta 114,Mix mizunas deshojado x kilo,10500.0,Seratta,chain_broadcast
+Seratta Atlantis,Mix mizunas deshojado x kilo,10500.0,Seratta,chain_broadcast
+Seratta Campo Di Fiori,Mix mizunas deshojado x kilo,10500.0,Seratta,chain_broadcast
+Origen Masa Madre,Mix mizunas deshojado x kilo,12999.0,ORIGEN MASA MADRE,exact
+El parche del Divino Niño,Mix parche del niño x kilo,17249.0,El parche del niño,review_accept
+Mistral Fabrica,Mix mistral x kilo,20999.0,Mistral,chain_broadcast
+Mistral Chapinero,Mix mistral x kilo,20999.0,Mistral,chain_broadcast
+Mistral Nogal,Mix mistral x kilo,20999.0,Mistral,chain_broadcast
+Mistral Soledad,Mix mistral x kilo,20999.0,Mistral,chain_broadcast
+Mistral Fabrica,Tomate san marzano,6999.0,Mistral,chain_broadcast
+Mistral Chapinero,Tomate san marzano,6999.0,Mistral,chain_broadcast
+Mistral Nogal,Tomate san marzano,6999.0,Mistral,chain_broadcast
+Mistral Soledad,Tomate san marzano,6999.0,Mistral,chain_broadcast
+Mistral Fabrica,Tomate cherry x kilo,11499.0,Mistral,chain_broadcast
+Mistral Chapinero,Tomate cherry x kilo,11499.0,Mistral,chain_broadcast
+Mistral Nogal,Tomate cherry x kilo,11499.0,Mistral,chain_broadcast
+Mistral Soledad,Tomate cherry x kilo,11499.0,Mistral,chain_broadcast
+Famiglia 85,Tomate cherry x kilo,10999.0,Famiglia,chain_broadcast
+Famiglia chapinero,Tomate cherry x kilo,10999.0,Famiglia,chain_broadcast
+Famiglia quinta camacho,Tomate cherry x kilo,10999.0,Famiglia,chain_broadcast
+Famiglia castellana,Tomate cherry x kilo,10999.0,Famiglia,chain_broadcast
+Famiglia universidades,Tomate cherry x kilo,10999.0,Famiglia,chain_broadcast
+Oye pez,Tomate cherry x kilo,10999.0,Oye pez,exact
+Hotel san francisco,Rabano x kilo,7500.0,Hotel San Francisco,exact
+Mistral Fabrica,Romana deshojada x kilo,17999.0,Mistral,chain_broadcast
+Mistral Chapinero,Romana deshojada x kilo,17999.0,Mistral,chain_broadcast
+Mistral Nogal,Romana deshojada x kilo,17999.0,Mistral,chain_broadcast
+Mistral Soledad,Romana deshojada x kilo,17999.0,Mistral,chain_broadcast
+Mistral Fabrica,Espinaca Deshojada x kilo,16999.0,Mistral,chain_broadcast
+Mistral Chapinero,Espinaca Deshojada x kilo,16999.0,Mistral,chain_broadcast
+Mistral Nogal,Espinaca Deshojada x kilo,16999.0,Mistral,chain_broadcast
+Mistral Soledad,Espinaca Deshojada x kilo,16999.0,Mistral,chain_broadcast
+Cabrera CDI,Champiñon paris,25000.0,Cabrera,chain_broadcast
+Cabrera Colina,Champiñon paris,25000.0,Cabrera,chain_broadcast
+Cabrera Salitre,Champiñon paris,25000.0,Cabrera,chain_broadcast
+Cabrera Fontanar,Champiñon paris,25000.0,Cabrera,chain_broadcast
+Cabrera Unicentro,Champiñon paris,25000.0,Cabrera,chain_broadcast
+Cabrera zona t,Champiñon paris,25000.0,Cabrera,chain_broadcast
+Hotel san francisco,Perejil,14999.0,Hotel San Francisco,exact
+Rabbit,Rugula baby deshojada,29999.0,Rabit,auto
+Mistral Fabrica,Cogollo europeo deshojado hamburguesa x kilo,15999.0,Mistral,chain_broadcast
+Mistral Chapinero,Cogollo europeo deshojado hamburguesa x kilo,15999.0,Mistral,chain_broadcast
+Mistral Nogal,Cogollo europeo deshojado hamburguesa x kilo,15999.0,Mistral,chain_broadcast
+Mistral Soledad,Cogollo europeo deshojado hamburguesa x kilo,15999.0,Mistral,chain_broadcast
+360 Burger,Cogollo europeo deshojado hamburguesa x kilo,16675.0,360 burger,exact
+Meat Real Burger,Cogollo europeo deshojado hamburguesa x kilo,16675.0,Meat real burger,exact
+El parche del Divino Niño,Cogollo europeo deshojado hamburguesa x kilo,16457.0,El parche del niño,review_accept
+Godo,Cogollo europeo deshojado hamburguesa x kilo,16490.0,Godo,exact
