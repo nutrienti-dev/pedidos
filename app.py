@@ -9,6 +9,7 @@ from google.oauth2.credentials import Credentials as UserCredentials
 from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
 from datetime import date, datetime
+import difflib
 import uuid
 
 # --------------------------------------------------------------------------
@@ -139,6 +140,24 @@ def _find_worksheet(sh, candidates):
     return sh.sheet1
 
 
+def best_client_match(typed, choices):
+    """Sugiere el cliente conocido mas parecido al texto que el usuario
+    escribio, usando similitud de texto (difflib, libreria estandar de
+    Python -- no requiere ninguna dependencia nueva). Nunca se muestra la
+    lista completa de clientes al usuario; solo se usa para sugerir, en la
+    hoja de destino, cual cliente registrado probablemente quiso decir.
+    """
+    typed_norm = " ".join((typed or "").strip().split())
+    if not typed_norm or not choices:
+        return "", 0.0
+    matches = difflib.get_close_matches(typed_norm, choices, n=1, cutoff=0.0)
+    if not matches:
+        return "", 0.0
+    best = matches[0]
+    score = difflib.SequenceMatcher(None, typed_norm.lower(), best.lower()).ratio()
+    return best, round(score * 100, 1)
+
+
 @st.cache_data(ttl=300, show_spinner="Cargando lista de clientes...")
 def load_clients():
     gc = get_gspread_client()
@@ -186,7 +205,41 @@ def load_products():
     return products
 
 
-def append_order_to_sheet(order_id, fecha_solicitud, fecha_despacho, cliente, items, total_pedido):
+DEST_HEADERS = [
+    "Fecha Solicitud",
+    "Fecha Despacho Deseada",
+    "Cliente (texto ingresado)",
+    "Cliente (sugerencia automatica)",
+    "Similitud (%)",
+    "Producto",
+    "Unidad",
+    "Cantidad",
+    "Precio Unitario",
+    "Total Linea",
+    "ID Pedido",
+    "Total Pedido",
+]
+
+
+@st.cache_resource(show_spinner=False)
+def ensure_dest_headers():
+    """Se asegura de que la hoja de destino tenga el encabezado esperado
+    (incluyendo las columnas nuevas de sugerencia de cliente). No toca
+    ninguna fila de datos ya existente -- solo escribe la fila 1 si hace
+    falta. @st.cache_resource hace que esto corra una sola vez por proceso.
+    """
+    gc = get_gspread_client()
+    sh = gc.open_by_key(DEST_SHEET_ID)
+    ws = sh.sheet1
+    current = ws.row_values(1)
+    if current != DEST_HEADERS:
+        ws.update("A1", [DEST_HEADERS])
+    return True
+
+
+def append_order_to_sheet(
+    order_id, fecha_solicitud, fecha_despacho, cliente, cliente_sugerido, similitud, items, total_pedido
+):
     gc = get_gspread_client()
     sh = gc.open_by_key(DEST_SHEET_ID)
     ws = sh.sheet1
@@ -197,6 +250,8 @@ def append_order_to_sheet(order_id, fecha_solicitud, fecha_despacho, cliente, it
                 fecha_solicitud.strftime("%Y-%m-%d"),
                 fecha_despacho.strftime("%Y-%m-%d"),
                 cliente,
+                cliente_sugerido,
+                similitud,
                 it["producto"],
                 it["unidad"],
                 it["cantidad"],
@@ -233,6 +288,7 @@ if gc is None:
 try:
     clients = load_clients()
     products = load_products()
+    ensure_dest_headers()
 except Exception as e:
     st.error(f"No se pudo conectar con Google Sheets: {e}")
     st.stop()
@@ -260,11 +316,10 @@ if st.session_state.step == "form":
     with col2:
         fecha_despacho = st.date_input("Fecha de despacho deseada", value=date.today())
 
-    cliente = st.selectbox(
-        "Cliente",
-        options=clients,
-        index=None,
-        placeholder="Selecciona tu restaurante...",
+    cliente = st.text_input(
+        "Nombre de tu restaurante",
+        placeholder="Escribe el nombre de tu restaurante...",
+        help="Escribe el nombre tal como lo conoces. No mostramos la lista de otros clientes.",
     )
 
     st.divider()
@@ -322,13 +377,16 @@ if st.session_state.step == "form":
 
         st.write("")
         if st.button("Revisar y confirmar pedido ➜", type="primary", use_container_width=True):
-            if not cliente:
-                st.warning("Selecciona el cliente antes de continuar.")
+            if not cliente or not cliente.strip():
+                st.warning("Escribe el nombre de tu restaurante antes de continuar.")
             elif not st.session_state.cart:
                 st.warning("Agrega al menos un producto antes de continuar.")
             else:
+                sugerido, similitud = best_client_match(cliente, clients)
                 st.session_state.review_data = {
-                    "cliente": cliente,
+                    "cliente": cliente.strip(),
+                    "cliente_sugerido": sugerido,
+                    "similitud": similitud,
                     "fecha_solicitud": fecha_solicitud,
                     "fecha_despacho": fecha_despacho,
                 }
@@ -376,6 +434,8 @@ elif st.session_state.step == "review":
                 fecha_solicitud=data["fecha_solicitud"],
                 fecha_despacho=data["fecha_despacho"],
                 cliente=data["cliente"],
+                cliente_sugerido=data["cliente_sugerido"],
+                similitud=data["similitud"],
                 items=st.session_state.cart,
                 total_pedido=cart_total(),
             )
