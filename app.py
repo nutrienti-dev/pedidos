@@ -1,15 +1,20 @@
 """
 Nutrienti - Sistema de Pedidos Web
 Permite a los clientes (restaurantes) hacer pedidos que se guardan
-automaticamente en una Google Sheet.
+automaticamente en una Google Sheet, y luego confirmar la recepcion de esos
+pedidos para poder medir el tiempo de entrega.
 """
 import streamlit as st
 import gspread
+from gspread.utils import rowcol_to_a1
 from google.oauth2.credentials import Credentials as UserCredentials
 from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
-from datetime import date
+from datetime import date, datetime
 import difflib
+import re
+import unicodedata
+import uuid
 import csv as csv_module
 import os
 from collections import Counter
@@ -31,6 +36,15 @@ PRODUCTS_SHEET_ID = "1b2_qDS9GMZGCJnAFBM690DBj3b_4qp5tqLDuQo7U5Bw"
 PRODUCTS_TAB_CANDIDATES = ["Hoja 1", "Sheet1", "Productos"]
 
 DEST_SHEET_ID = "1WKkqvaM27VDxCviwNPWKEI5xKblDH-vgQEi9_5oiQNY"
+
+# "RAZONES SOCIALES - NOMBRES COMERCIALES": fuente de verdad para resolver
+# el nombre del punto (nombre comercial) cuando no se parece en nada a la
+# razon social / nombre de cadena (ej. "Astoria" es un punto de "ALTAS
+# VISTAS SAS"). El matching de este archivo (match_nombre_comercial) viene
+# portado de facturacion_repo/lib/matching.py, donde ya se probo con datos
+# reales -- ver README para mas contexto.
+RAZONES_SOCIALES_SHEET_ID = "1_IbW0IhpSxiCVL9Xn97XsIe5wE4AWnWMjG8szdoWSNI"
+UMBRAL_NOMBRE_COMERCIAL = 0.72
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -119,10 +133,12 @@ def _find_worksheet(sh, candidates):
 
 def best_client_match(typed, choices):
     """Sugiere el cliente conocido mas parecido al texto que el usuario
-    escribio, usando similitud de texto (difflib, libreria estandar de
-    Python -- no requiere ninguna dependencia nueva). Nunca se muestra la
-    lista completa de clientes al usuario; solo se usa para sugerir, en la
-    hoja de destino, cual cliente registrado probablemente quiso decir.
+    escribio, comparando directo contra la lista de clientes (difflib,
+    libreria estandar de Python). Es el metodo de respaldo cuando el mapa
+    de nombres comerciales (resolve_cliente, mas abajo) no encuentra nada
+    confiable. Nunca se muestra la lista completa de clientes al usuario;
+    solo se usa para sugerir, en la hoja de destino, cual cliente
+    registrado probablemente quiso decir.
     """
     typed_norm = " ".join((typed or "").strip().split())
     if not typed_norm or not choices:
@@ -133,6 +149,116 @@ def best_client_match(typed, choices):
     best = matches[0]
     score = difflib.SequenceMatcher(None, typed_norm.lower(), best.lower()).ratio()
     return best, round(score * 100, 1)
+
+
+# --------------------------------------------------------------------------
+# Resolucion de "nombre del punto" contra el mapa Razon Social / Nombre
+# Comercial (fuente de verdad, ver nota en RAZONES_SOCIALES_SHEET_ID mas
+# arriba). Portado de facturacion_repo/lib/matching.py y lib/data.py
+# (match_nombre_comercial / load_nombre_comercial_map), donde ya se probo
+# con datos reales -- evita el bug documentado ahi: nombres de punto que no
+# se parecen en nada a la cadena/razon social (ej. "Astoria"/"Bombay"/"Sexy
+# Seoul" -> "ALTAS VISTAS SAS"; "Osaki"/"Sorella" -> "TAKAMI SA") terminaban
+# sugiriendo un cliente equivocado con el matching plano anterior.
+# --------------------------------------------------------------------------
+def strip_accents(s):
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+def normalize(s):
+    s = strip_accents(str(s or "")).lower()
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _similarity(a, b):
+    if not a or not b:
+        return 0.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_nombre_comercial_map():
+    """Carga "RAZONES SOCIALES - NOMBRES COMERCIALES". Devuelve lista de
+    dicts {razon_social, nombre_comercial}."""
+    gc = get_gspread_client()
+    ws = gc.open_by_key(RAZONES_SOCIALES_SHEET_ID).sheet1
+    records = ws.get_all_records()
+    rows = []
+    for r in records:
+        # Las llaves de get_all_records() vienen tal cual el encabezado de
+        # la hoja (espacios inconsistentes) -- se buscan de forma robusta.
+        razon = ""
+        nombre_comercial = ""
+        for k, v in r.items():
+            key_norm = str(k or "").strip().lower()
+            if key_norm == "razon social":
+                razon = str(v or "").strip()
+            elif key_norm == "nombre comercial":
+                nombre_comercial = str(v or "").strip()
+        if not nombre_comercial:
+            continue
+        rows.append({"razon_social": razon or nombre_comercial, "nombre_comercial": nombre_comercial})
+    return rows
+
+
+def match_nombre_comercial(candidatos, nc_rows):
+    """candidatos: string o lista de strings (ej. texto ingresado y una
+    sugerencia previa) -- se prueban todos. nc_rows: lista de dicts
+    razon_social/nombre_comercial (ver load_nombre_comercial_map).
+    Devuelve (razon_social_o_None, nombre_comercial_o_None, score_0_a_100).
+    """
+    if not nc_rows:
+        return None, None, 0.0
+    if isinstance(candidatos, str):
+        candidatos = [candidatos]
+    candidatos_norm = [normalize(c) for c in candidatos]
+    candidatos_norm = [c for c in candidatos_norm if c]
+    if not candidatos_norm:
+        return None, None, 0.0
+
+    best_row = None
+    best_score = 0.0
+    for row in nc_rows:
+        nc_norm = normalize(row.get("nombre_comercial", ""))
+        if not nc_norm:
+            continue
+        for text_norm in candidatos_norm:
+            if text_norm == nc_norm:
+                score = 1.0
+            elif text_norm.startswith(nc_norm) or nc_norm.startswith(text_norm):
+                shorter = min(len(text_norm), len(nc_norm))
+                longer = max(len(text_norm), len(nc_norm))
+                score = 0.85 + 0.15 * (shorter / longer)
+            else:
+                score = _similarity(text_norm, nc_norm)
+            if score > best_score:
+                best_score = score
+                best_row = row
+
+    if best_row is not None and best_score >= UMBRAL_NOMBRE_COMERCIAL:
+        razon = (best_row.get("razon_social") or "").strip() or None
+        nc = (best_row.get("nombre_comercial") or "").strip() or None
+        return razon, nc, round(best_score * 100, 1)
+    return None, None, round(best_score * 100, 1)
+
+
+def resolve_cliente(cliente_texto, clients, nc_rows):
+    """Resuelve el nombre del punto a su version canonica, en dos pasos:
+    1) mapa Razon Social/Nombre Comercial (fuente de verdad) -- resuelve
+       puntos que no se parecen en nada a su razon social.
+    2) si el mapa no tiene un match confiable (sheet no cargo, punto nuevo
+       que aun no esta en el mapa, etc.), respaldo: comparar directo contra
+       la lista de clientes conocidos (best_client_match).
+    Devuelve (cliente_sugerido, similitud_0_a_100, fuente) donde fuente es
+    "mapa" o "lista" (para trazabilidad si hace falta depurar).
+    """
+    _, nombre_comercial, score_mapa = match_nombre_comercial(cliente_texto, nc_rows)
+    if nombre_comercial:
+        return nombre_comercial, score_mapa, "mapa"
+    sugerido, similitud = best_client_match(cliente_texto, clients)
+    return sugerido, similitud, "lista"
 
 
 @st.cache_data(ttl=300, show_spinner="Cargando lista de clientes...")
@@ -191,11 +317,17 @@ DEST_HEADERS = [
     "Producto",
     "Unidad",
     "Cantidad",
+    "Codigo Pedido",
+    "Estado",
+    "Fecha Recepcion",
+    "Observaciones",
 ]
 
-# Suficientemente ancho para cubrir encabezados viejos con mas columnas
-# (por ejemplo Precio Unitario / Total Linea / ID Pedido / Total Pedido de
-# la version anterior con precios) y dejarlos en blanco.
+ESTADO_PENDIENTE = "Pendiente"
+ESTADO_RECIBIDO = "Recibido"
+
+# Suficientemente ancho para cubrir encabezados viejos con mas o menos
+# columnas que la version actual, y dejar las que sobran en blanco.
 _DEST_HEADER_CLEAR_RANGE = "A1:Z1"
 
 
@@ -203,10 +335,8 @@ _DEST_HEADER_CLEAR_RANGE = "A1:Z1"
 def ensure_dest_headers():
     """Se asegura de que la hoja de destino tenga el encabezado esperado.
     No toca ninguna fila de datos ya existente -- solo escribe la fila 1 si
-    hace falta, y limpia columnas de encabezado viejas que ya no se usan
-    (por ejemplo si la hoja traia columnas de precio de una version
-    anterior). @st.cache_resource hace que esto corra una sola vez por
-    proceso.
+    hace falta, y limpia columnas de encabezado viejas que ya no se usan.
+    @st.cache_resource hace que esto corra una sola vez por proceso.
     """
     gc = get_gspread_client()
     sh = gc.open_by_key(DEST_SHEET_ID)
@@ -218,7 +348,7 @@ def ensure_dest_headers():
     return True
 
 
-def append_order_to_sheet(fecha_solicitud, fecha_despacho, cliente, cliente_sugerido, similitud, items):
+def append_order_to_sheet(codigo_pedido, fecha_solicitud, fecha_despacho, cliente, cliente_sugerido, similitud, items):
     gc = get_gspread_client()
     sh = gc.open_by_key(DEST_SHEET_ID)
     ws = sh.sheet1
@@ -234,6 +364,10 @@ def append_order_to_sheet(fecha_solicitud, fecha_despacho, cliente, cliente_suge
                 it["producto"],
                 it["unidad"],
                 it["cantidad"],
+                codigo_pedido,
+                ESTADO_PENDIENTE,
+                "",
+                "",
             ]
         )
     # append_rows uses the Sheets API's append endpoint, which is safe for
@@ -242,7 +376,91 @@ def append_order_to_sheet(fecha_solicitud, fecha_despacho, cliente, cliente_suge
 
 
 # --------------------------------------------------------------------------
-# Matriz de precios por cliente (admin)
+# Confirmacion de recepcion ("Mis Pedidos")
+#
+# Cada pedido queda repartido en varias filas (una por producto) que
+# comparten el mismo "Codigo Pedido". Para mostrar los pedidos pendientes
+# de un punto, se agrupan las filas por codigo; al confirmar recepcion se
+# actualizan TODAS las filas de ese codigo de una vez (Estado, Fecha
+# Recepcion, Observaciones).
+# --------------------------------------------------------------------------
+@st.cache_data(ttl=15, show_spinner=False)
+def load_pedidos_rows():
+    """Lee todas las filas de la hoja de destino. TTL corto (15s, no 300
+    como clientes/productos) porque el estado cambia con cada confirmacion
+    y varias personas pueden estar consultando a la vez."""
+    gc = get_gspread_client()
+    sh = gc.open_by_key(DEST_SHEET_ID)
+    ws = sh.sheet1
+    return ws.get_all_records()
+
+
+def pedidos_pendientes_para(cliente_sugerido):
+    """Devuelve un dict {codigo_pedido: {fecha_solicitud, fecha_despacho,
+    items: [...]}} con los pedidos en Estado=Pendiente de ese cliente
+    (comparando contra la columna "Cliente (sugerencia automatica)", que es
+    la version canonica guardada en el pedido, no el texto libre)."""
+    objetivo = (cliente_sugerido or "").strip().lower()
+    if not objetivo:
+        return {}
+    pedidos = {}
+    for r in load_pedidos_rows():
+        if str(r.get("Cliente (sugerencia automatica)", "")).strip().lower() != objetivo:
+            continue
+        if str(r.get("Estado", "")).strip().lower() != ESTADO_PENDIENTE.lower():
+            continue
+        codigo = str(r.get("Codigo Pedido", "")).strip()
+        if not codigo:
+            continue
+        pedido = pedidos.setdefault(
+            codigo,
+            {
+                "fecha_solicitud": r.get("Fecha Solicitud", ""),
+                "fecha_despacho": r.get("Fecha Despacho Deseada", ""),
+                "items": [],
+            },
+        )
+        pedido["items"].append(
+            {
+                "producto": r.get("Producto", ""),
+                "unidad": r.get("Unidad", ""),
+                "cantidad": r.get("Cantidad", ""),
+            }
+        )
+    return pedidos
+
+
+def marcar_pedido_recibido(codigo_pedido, observaciones):
+    """Actualiza Estado/Fecha Recepcion/Observaciones en todas las filas
+    que compartan codigo_pedido. Devuelve cuantas filas se actualizaron."""
+    gc = get_gspread_client()
+    sh = gc.open_by_key(DEST_SHEET_ID)
+    ws = sh.sheet1
+    headers = ws.row_values(1)
+    col_codigo = headers.index("Codigo Pedido") + 1
+    col_estado = headers.index("Estado") + 1
+    col_fecha_recepcion = headers.index("Fecha Recepcion") + 1
+    col_obs = headers.index("Observaciones") + 1
+
+    cells = ws.findall(codigo_pedido, in_column=col_codigo)
+    if not cells:
+        return 0
+
+    fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M")
+    updates = []
+    for cell in cells:
+        updates.append({"range": rowcol_to_a1(cell.row, col_estado), "values": [[ESTADO_RECIBIDO]]})
+        updates.append(
+            {"range": rowcol_to_a1(cell.row, col_fecha_recepcion), "values": [[fecha_hora]]}
+        )
+        updates.append({"range": rowcol_to_a1(cell.row, col_obs), "values": [[observaciones or ""]]})
+    ws.batch_update(updates, value_input_option="USER_ENTERED")
+    load_pedidos_rows.clear()
+    return len(cells)
+
+
+# --------------------------------------------------------------------------
+# Matriz de precios por cliente (admin, en pausa)
 #
 # "precios_por_cliente.csv" contiene precios REALES conocidos por cliente,
 # extraidos de las listas de precios de "BASE DE DATOS PRODUCTOS ACTIVOS.xlsx"
@@ -255,11 +473,9 @@ def append_order_to_sheet(fecha_solicitud, fecha_despacho, cliente, cliente_suge
 # hoja de productos: una fila por cliente, una columna por producto. Cada
 # celda usa el precio real del cliente si se conoce (resaltada en verde); si
 # no, usa el precio mas comun (moda) entre los demas clientes para ese
-# producto: como el sistema de precios solo registra un precio especifico
-# para un cliente cuando existe un acuerdo/pedido real, tener un precio real
-# en la matriz equivale a "este cliente pide este producto habitualmente" --
-# por eso el resaltado en verde tambien sirve como indicador de productos
-# frecuentes por cliente.
+# producto. NOTA: esta funcionalidad de precios esta en pausa (ver README) y
+# no esta conectada al formulario de pedido -- se deja el codigo listo por
+# si se reactiva mas adelante.
 # --------------------------------------------------------------------------
 MATRIX_TAB_NAME = "matriz precios"
 CLIENT_PRICES_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "precios_por_cliente.csv")
@@ -437,6 +653,8 @@ if "cart" not in st.session_state:
     st.session_state.cart = []
 if "step" not in st.session_state:
     st.session_state.step = "form"
+if "last_codigo_pedido" not in st.session_state:
+    st.session_state.last_codigo_pedido = None
 
 gc = get_gspread_client()
 if gc is None:
@@ -455,6 +673,19 @@ except Exception as e:
     st.error(f"No se pudo conectar con Google Sheets: {e}")
     st.stop()
 
+# El mapa de nombres comerciales es un "nice to have": si por lo que sea no
+# se puede leer (permisos, hoja movida, etc.), la app sigue funcionando con
+# el matching de respaldo en vez de detenerse.
+try:
+    nc_rows = load_nombre_comercial_map()
+except Exception:
+    nc_rows = []
+    st.warning(
+        "No se pudo leer el mapa de Razon Social/Nombre Comercial -- se usa "
+        "el matching de respaldo (lista de clientes) mientras tanto.",
+        icon="⚠️",
+    )
+
 if not clients:
     st.warning("No se encontraron clientes en la hoja de origen.")
 if not products:
@@ -464,136 +695,198 @@ product_names = [p["producto"] for p in products]
 product_by_name = {p["producto"]: p for p in products}
 
 
-# --------------------------------------------------------------------------
-# PASO 1: formulario de pedido
-# --------------------------------------------------------------------------
-if st.session_state.step == "form":
-    col1, col2 = st.columns(2)
-    with col1:
-        fecha_solicitud = st.date_input("Fecha de la solicitud", value=date.today())
-    with col2:
-        fecha_despacho = st.date_input("Fecha de despacho deseada", value=date.today())
+tab_pedido, tab_estado = st.tabs(["📦 Hacer Pedido", "✅ Confirmar Recepción"])
 
-    cliente = st.text_input(
+# ==========================================================================
+# TAB 1: Hacer pedido
+# ==========================================================================
+with tab_pedido:
+    # ----------------------------------------------------------------------
+    # PASO 1: formulario de pedido
+    # ----------------------------------------------------------------------
+    if st.session_state.step == "form":
+        col1, col2 = st.columns(2)
+        with col1:
+            fecha_solicitud = st.date_input("Fecha de la solicitud", value=date.today())
+        with col2:
+            fecha_despacho = st.date_input("Fecha de despacho deseada", value=date.today())
+
+        cliente = st.text_input(
+            "Nombre de Punto",
+            placeholder="Escribe el nombre de tu punto...",
+            help="Escribe el nombre tal como lo conoces. No mostramos la lista de otros puntos.",
+        )
+
+        st.divider()
+        st.subheader("Agregar productos")
+
+        with st.form("add_item_form", clear_on_submit=True):
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                producto_sel = st.selectbox(
+                    "Producto",
+                    options=product_names,
+                    index=None,
+                    placeholder="Selecciona un producto...",
+                )
+            with c2:
+                cantidad = st.number_input("Cantidad", min_value=0.0, value=1.0, step=0.5)
+
+            add_clicked = st.form_submit_button("➕ Agregar al pedido", use_container_width=True)
+
+            if add_clicked:
+                if not producto_sel:
+                    st.warning("Selecciona un producto antes de agregarlo.")
+                elif cantidad <= 0:
+                    st.warning("La cantidad debe ser mayor a 0.")
+                else:
+                    p = product_by_name[producto_sel]
+                    st.session_state.cart.append(
+                        {
+                            "producto": p["producto"],
+                            "unidad": p["unidad"],
+                            "cantidad": cantidad,
+                        }
+                    )
+                    st.rerun()
+
+        # Carrito actual
+        if st.session_state.cart:
+            st.subheader("Tu pedido")
+            for idx, it in enumerate(st.session_state.cart):
+                cc1, cc2, cc3 = st.columns([3, 1.5, 0.6])
+                cc1.write(it["producto"])
+                cc2.write(f"{it['cantidad']:g} {it['unidad']}")
+                if cc3.button("🗑️", key=f"del_{idx}"):
+                    st.session_state.cart.pop(idx)
+                    st.rerun()
+
+            st.write("")
+            if st.button("Revisar y confirmar pedido ➜", type="primary", use_container_width=True):
+                if not cliente or not cliente.strip():
+                    st.warning("Escribe el nombre de tu punto antes de continuar.")
+                elif not st.session_state.cart:
+                    st.warning("Agrega al menos un producto antes de continuar.")
+                else:
+                    sugerido, similitud, _fuente = resolve_cliente(cliente, clients, nc_rows)
+                    st.session_state.review_data = {
+                        "cliente": cliente.strip(),
+                        "cliente_sugerido": sugerido,
+                        "similitud": similitud,
+                        "fecha_solicitud": fecha_solicitud,
+                        "fecha_despacho": fecha_despacho,
+                    }
+                    st.session_state.step = "review"
+                    st.rerun()
+        else:
+            st.info("Aun no has agregado productos a tu pedido.")
+
+    # ----------------------------------------------------------------------
+    # PASO 2: revision y confirmacion
+    # ----------------------------------------------------------------------
+    elif st.session_state.step == "review":
+        data = st.session_state.review_data
+        st.subheader("Revisa tu pedido antes de enviarlo")
+
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Punto", data["cliente"])
+        r2.metric("Fecha solicitud", data["fecha_solicitud"].strftime("%Y-%m-%d"))
+        r3.metric("Fecha despacho", data["fecha_despacho"].strftime("%Y-%m-%d"))
+
+        st.write("")
+        for it in st.session_state.cart:
+            cc1, cc2 = st.columns([3, 1.5])
+            cc1.write(f"**{it['producto']}**")
+            cc2.write(f"{it['cantidad']:g} {it['unidad']}")
+
+        st.write("")
+        b1, b2 = st.columns(2)
+        if b1.button("← Corregir pedido", use_container_width=True):
+            st.session_state.step = "form"
+            st.rerun()
+
+        if b2.button("✅ Confirmar y enviar pedido", type="primary", use_container_width=True):
+            codigo_pedido = f"{datetime.now():%y%m%d}-{uuid.uuid4().hex[:5].upper()}"
+            try:
+                append_order_to_sheet(
+                    codigo_pedido=codigo_pedido,
+                    fecha_solicitud=data["fecha_solicitud"],
+                    fecha_despacho=data["fecha_despacho"],
+                    cliente=data["cliente"],
+                    cliente_sugerido=data["cliente_sugerido"],
+                    similitud=data["similitud"],
+                    items=st.session_state.cart,
+                )
+                load_pedidos_rows.clear()
+                st.session_state.last_codigo_pedido = codigo_pedido
+                st.session_state.step = "done"
+                st.rerun()
+            except Exception as e:
+                st.error(f"No se pudo enviar el pedido: {e}")
+
+    # ----------------------------------------------------------------------
+    # PASO 3: confirmacion final
+    # ----------------------------------------------------------------------
+    elif st.session_state.step == "done":
+        st.success("🎉 ¡Tu pedido fue enviado con exito!")
+        if st.session_state.last_codigo_pedido:
+            st.write(f"Codigo de tu pedido: **{st.session_state.last_codigo_pedido}**")
+        st.write(
+            "Nuestro equipo se pondra en contacto para confirmar la entrega. "
+            "Cuando lo recibas, confirma la recepcion en la pestaña **Confirmar Recepción**."
+        )
+
+        if st.button("Hacer otro pedido"):
+            st.session_state.cart = []
+            st.session_state.step = "form"
+            st.rerun()
+
+# ==========================================================================
+# TAB 2: Confirmar recepcion ("Mis Pedidos")
+# ==========================================================================
+with tab_estado:
+    st.subheader("Consulta y confirma tus pedidos pendientes")
+    busqueda = st.text_input(
         "Nombre de Punto",
         placeholder="Escribe el nombre de tu punto...",
         help="Escribe el nombre tal como lo conoces. No mostramos la lista de otros puntos.",
+        key="busqueda_punto",
     )
 
-    st.divider()
-    st.subheader("Agregar productos")
-
-    with st.form("add_item_form", clear_on_submit=True):
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            producto_sel = st.selectbox(
-                "Producto",
-                options=product_names,
-                index=None,
-                placeholder="Selecciona un producto...",
-            )
-        with c2:
-            cantidad = st.number_input("Cantidad", min_value=0.0, value=1.0, step=0.5)
-
-        add_clicked = st.form_submit_button("➕ Agregar al pedido", use_container_width=True)
-
-        if add_clicked:
-            if not producto_sel:
-                st.warning("Selecciona un producto antes de agregarlo.")
-            elif cantidad <= 0:
-                st.warning("La cantidad debe ser mayor a 0.")
+    if busqueda and busqueda.strip():
+        sugerido, similitud, _fuente = resolve_cliente(busqueda, clients, nc_rows)
+        if not sugerido or similitud < 60:
+            st.info("No encontramos un punto que coincida con ese nombre.")
+        else:
+            pedidos = pedidos_pendientes_para(sugerido)
+            if not pedidos:
+                st.success(f"**{sugerido}** no tiene pedidos pendientes por confirmar. 🎉")
             else:
-                p = product_by_name[producto_sel]
-                st.session_state.cart.append(
-                    {
-                        "producto": p["producto"],
-                        "unidad": p["unidad"],
-                        "cantidad": cantidad,
-                    }
-                )
-                st.rerun()
+                st.caption(f"Pedidos pendientes de **{sugerido}**:")
+                for codigo, pedido in pedidos.items():
+                    with st.container(border=True):
+                        st.markdown(f"**Pedido {codigo}**")
+                        c1, c2 = st.columns(2)
+                        c1.write(f"Fecha solicitud: {pedido['fecha_solicitud']}")
+                        c2.write(f"Fecha despacho: {pedido['fecha_despacho']}")
+                        for it in pedido["items"]:
+                            st.write(f"- {it['producto']}: {it['cantidad']} {it['unidad']}")
 
-    # Carrito actual
-    if st.session_state.cart:
-        st.subheader("Tu pedido")
-        for idx, it in enumerate(st.session_state.cart):
-            cc1, cc2, cc3 = st.columns([3, 1.5, 0.6])
-            cc1.write(it["producto"])
-            cc2.write(f"{it['cantidad']:g} {it['unidad']}")
-            if cc3.button("🗑️", key=f"del_{idx}"):
-                st.session_state.cart.pop(idx)
-                st.rerun()
-
-        st.write("")
-        if st.button("Revisar y confirmar pedido ➜", type="primary", use_container_width=True):
-            if not cliente or not cliente.strip():
-                st.warning("Escribe el nombre de tu punto antes de continuar.")
-            elif not st.session_state.cart:
-                st.warning("Agrega al menos un producto antes de continuar.")
-            else:
-                sugerido, similitud = best_client_match(cliente, clients)
-                st.session_state.review_data = {
-                    "cliente": cliente.strip(),
-                    "cliente_sugerido": sugerido,
-                    "similitud": similitud,
-                    "fecha_solicitud": fecha_solicitud,
-                    "fecha_despacho": fecha_despacho,
-                }
-                st.session_state.step = "review"
-                st.rerun()
+                        obs_key = f"obs_{codigo}"
+                        st.text_area(
+                            "Observaciones",
+                            key=obs_key,
+                            placeholder="Ej: llego todo completo, o falto/vino mal 1kg de...",
+                        )
+                        if st.button("✅ Pedido Recibido", key=f"recibido_{codigo}", type="primary"):
+                            n = marcar_pedido_recibido(codigo, st.session_state.get(obs_key, ""))
+                            if n:
+                                st.success(f"¡Gracias! Marcamos el pedido {codigo} como recibido.")
+                                st.rerun()
+                            else:
+                                st.error("No se pudo actualizar el pedido, intenta de nuevo.")
     else:
-        st.info("Aun no has agregado productos a tu pedido.")
-
-# --------------------------------------------------------------------------
-# PASO 2: revision y confirmacion
-# --------------------------------------------------------------------------
-elif st.session_state.step == "review":
-    data = st.session_state.review_data
-    st.subheader("Revisa tu pedido antes de enviarlo")
-
-    r1, r2, r3 = st.columns(3)
-    r1.metric("Punto", data["cliente"])
-    r2.metric("Fecha solicitud", data["fecha_solicitud"].strftime("%Y-%m-%d"))
-    r3.metric("Fecha despacho", data["fecha_despacho"].strftime("%Y-%m-%d"))
-
-    st.write("")
-    for it in st.session_state.cart:
-        cc1, cc2 = st.columns([3, 1.5])
-        cc1.write(f"**{it['producto']}**")
-        cc2.write(f"{it['cantidad']:g} {it['unidad']}")
-
-    st.write("")
-    b1, b2 = st.columns(2)
-    if b1.button("← Corregir pedido", use_container_width=True):
-        st.session_state.step = "form"
-        st.rerun()
-
-    if b2.button("✅ Confirmar y enviar pedido", type="primary", use_container_width=True):
-        try:
-            append_order_to_sheet(
-                fecha_solicitud=data["fecha_solicitud"],
-                fecha_despacho=data["fecha_despacho"],
-                cliente=data["cliente"],
-                cliente_sugerido=data["cliente_sugerido"],
-                similitud=data["similitud"],
-                items=st.session_state.cart,
-            )
-            st.session_state.step = "done"
-            st.rerun()
-        except Exception as e:
-            st.error(f"No se pudo enviar el pedido: {e}")
-
-# --------------------------------------------------------------------------
-# PASO 3: confirmacion final
-# --------------------------------------------------------------------------
-elif st.session_state.step == "done":
-    st.success("🎉 ¡Tu pedido fue enviado con exito!")
-    st.write("Nuestro equipo se pondra en contacto para confirmar la entrega.")
-
-    if st.button("Hacer otro pedido"):
-        st.session_state.cart = []
-        st.session_state.step = "form"
-        st.rerun()
+        st.info("Escribe el nombre de tu punto para ver tus pedidos pendientes.")
 
 # --------------------------------------------------------------------------
 # Admin oculto: construir/actualizar la matriz de precios por cliente.
