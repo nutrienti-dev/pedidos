@@ -20,10 +20,35 @@ La app tiene dos pestañas:
   — se usan solo internamente para la sugerencia automatica de nombre, nunca
   se le muestran al punto.
 - **Productos**: se cargan en vivo desde
-  [esta Google Sheet](https://docs.google.com/spreadsheets/d/1b2_qDS9GMZGCJnAFBM690DBj3b_4qp5tqLDuQo7U5Bw)
-  ("Nutrienti - Productos y Precios (pedidos web)", columna Producto —
-  tambien tiene Unidad/Precio, pero el precio no se usa en el pedido, ver
-  nota mas abajo). Se creo esta copia porque el archivo original,
+  [esta Google Sheet](https://docs.google.com/spreadsheets/d/11oSUTlnB-FZvpQcTxnk2lndeJZt5nRNne3PCv6MJgsE)
+  ("Nutrienti - Productos y Precios (pedidos web)"), columnas **Codigo,
+  Producto, Unidad, Precio** — el precio no se usa en el pedido (ver nota
+  mas abajo), pero Codigo si: se guarda junto a cada linea del pedido en
+  la hoja de destino (ver mas abajo).
+
+  > **2026-10-09**: la hoja original de productos se borro de Drive por
+  > accidente (no estaba en la papelera, no se pudo recuperar) y la app dejo
+  > de cargar ("No se pudo conectar con Google Sheets: <Response [404]>").
+  > Se recreo una hoja nueva con **el mismo contenido** (55 productos, 46 con
+  > precio), reconstruida desde `BASE DE DATOS PRODUCTOS ACTIVOS.xlsx`
+  > (mismo origen de siempre), con **un ID nuevo**
+  > (`1UaciwAHXOFWdndvKWq5bO1In8zHJ_9O7aPL6CgVxuLM` en ese momento).
+  > **Recomendación:** evitar borrar hojas de la carpeta "Integracion AI"
+  > sin avisar, ya que varias (clientes, productos, pedidos, razon social,
+  > maestro de clientes) son dependencias en vivo de esta app.
+  >
+  > **Mismo dia, segunda actualizacion**: se agrego la columna **Codigo**
+  > (el codigo interno del producto, ej. `CET01`, `LB014` — viene de la
+  > columna "Código" del Excel original, extraida por posicion ya que el
+  > orden de filas coincide exacto entre el Excel y la copia nativa). Como
+  > la API de Drive de este conector no permite editar el contenido de una
+  > Sheet ya creada, se creo **otra hoja nueva** con las 4 columnas y
+  > **otro ID nuevo** (`11oSUTlnB-FZvpQcTxnk2lndeJZt5nRNne3PCv6MJgsE`,
+  > el que esta en uso ahora) — la hoja del ID anterior se renombro con
+  > prefijo `[REEMPLAZADA ...]` en vez de borrarse, por si hace falta
+  > consultarla.
+
+  Se creo esta copia porque el archivo original,
   "BASE DE DATOS PRODUCTOS ACTIVOS.xlsx", es un Excel subido a Drive y la
   API de Google Sheets no puede leer archivos de Office directamente
   (error `APIError: [400] ... must not be an Office file`). Si el archivo
@@ -37,10 +62,12 @@ La app tiene dos pestañas:
   varios puntos enviando pedidos al mismo tiempo. Columnas actuales: Fecha
   Solicitud, Fecha Despacho Deseada, Cliente (texto ingresado), Cliente
   (sugerencia automatica), Similitud (%), Producto, Unidad, Cantidad,
-  **Codigo Pedido, Estado, Fecha Recepcion, Observaciones** (las ultimas 4
-  son para la confirmacion de recepcion, ver mas abajo). El encabezado se
-  actualiza solo la primera vez que corre la app (`ensure_dest_headers()`),
-  sin tocar filas de datos ya existentes.
+  Codigo Pedido, Estado, Fecha Recepcion, Observaciones, Cliente (Razon
+  Social), NIT, **Codigo Producto** (estas 3 ultimas agregadas 2026-10-09,
+  ver secciones de abajo; las 4 antes de "Cliente (Razon Social)" son para
+  la confirmacion de recepcion, ver mas abajo). El encabezado se actualiza
+  solo la primera vez que corre la app (`ensure_dest_headers()`), sin tocar
+  filas de datos ya existentes.
 
 > **Nota sobre precios (en pausa):** por decision del negocio, la app
 > **ya no calcula ni muestra precios** — el pedido es solo producto +
@@ -107,6 +134,62 @@ en vez de reinventarla:
   automatica)" en cada pedido sea siempre el mismo nombre canonico que
   despues se usa para buscar "mis pedidos pendientes" — por eso ambos
   flujos usan la misma funcion `resolve_cliente()`.
+
+## Razon Social y NIT en la hoja de pedidos (2026-10-09)
+
+Para que el equipo de facturacion pueda identificar al cliente oficial de
+cada pedido sin tener que cruzarlo a mano, la hoja de destino ahora agrega
+dos columnas al final: **"Cliente (Razon Social)"** y **"NIT"**.
+
+- Estas columnas solo se llenan cuando `resolve_cliente()` encontro el
+  punto en la hoja "RAZONES SOCIALES - NOMBRES COMERCIALES" (fuente
+  `"mapa"`, ver seccion de matching mas arriba) — si cayo al metodo de
+  respaldo (lista plana de clientes), no hay razon social de donde partir
+  y las columnas quedan vacias (mejor vacio que adivinar mal el cliente
+  facturable).
+- Con esa razon social, `find_client_master_by_razon()` busca el cliente
+  exacto (ignorando sufijos societarios como SAS/S.A./LTDA, via
+  `strip_legal_suffix()`) en
+  ["BASE DE DATOS CLIENTES ACTIVOS.xlsx"](https://drive.google.com/file/d/16GFApKVxoQ1mVURvCpgbDGNmwjCGbeka)
+  (el maestro de clientes de World Office, mismo archivo que ya usaba
+  `facturacion_repo`), y de ahi saca la razon social oficial y el NIT
+  (columnas "Primer Nombre ó Razon Social" e "Identificación"). Si no
+  encuentra un match confiable (umbral 60%), tambien queda vacio.
+- Toda esta logica (`load_client_master`, `find_client_master_by_razon`,
+  `strip_legal_suffix`, `resolve_nit`) se **porto de `facturacion_repo`**
+  (`lib/data.py` y `lib/matching.py`), donde ya estaba probada con datos
+  reales, en vez de reinventarla.
+- Como es un Excel (.xlsx) subido a Drive, se lee igual que
+  "BASE DE DATOS PRODUCTOS ACTIVOS.xlsx": se descarga con la API de Drive
+  (`get_drive_service()`, nueva funcion, mismas credenciales OAuth que ya
+  usa la app) y se parsea con `openpyxl` — la API de Sheets no puede leer
+  archivos de Office directamente. Por eso esta version agrega dos
+  dependencias nuevas: `google-api-python-client` (cliente de la API de
+  Drive) y `openpyxl` (lectura de .xlsx).
+- Es un "nice to have": si la hoja de razones sociales o el maestro de
+  clientes no cargan (permisos, archivo movido, etc.), el pedido se sigue
+  guardando normalmente, solo sin Razon Social/NIT (la app muestra una
+  advertencia, no se detiene).
+- En la pantalla de revision del pedido (antes de confirmar), se muestra
+  "Facturacion: **<razon social>** · NIT <nit>" cuando se pudo resolver,
+  para que quede claro antes de enviar.
+
+## Codigo de producto en la hoja de pedidos (2026-10-09)
+
+Ademas de Razon Social/NIT, el usuario pidio ver el **codigo interno del
+producto** (ej. `CET01`, `LB014`) en cada linea de pedido.
+
+- La hoja de productos ahora tiene una columna `Codigo` (ver "Como
+  funciona" arriba). `load_products()` la lee y la incluye en cada
+  producto del catalogo.
+- Al agregar un producto al carrito, su `codigo` viaja junto con
+  producto/unidad/cantidad.
+- `append_order_to_sheet()` escribe ese codigo en la nueva columna
+  **"Codigo Producto"** (ultima columna de la hoja de destino) para cada
+  linea del pedido.
+- Si un producto no tiene codigo asignado (no debería pasar con el
+  catalogo actual, los 55 productos lo tienen), la columna queda vacia en
+  vez de fallar.
 
 ## Matriz de precios por cliente (en pausa, ver nota arriba)
 
@@ -175,9 +258,11 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Se abrira en `http://localhost:8501`. No se agregaron dependencias nuevas
-para esta version (el matching usa solo libreria estandar de Python:
-`difflib`, `re`, `unicodedata`).
+Se abrira en `http://localhost:8501`. Esta version agrega dos dependencias
+nuevas (`google-api-python-client`, `openpyxl`) para poder leer el maestro
+de clientes (.xlsx) y completar Razon Social/NIT — ver seccion arriba. El
+matching en si sigue usando solo libreria estandar de Python (`difflib`,
+`re`, `unicodedata`).
 
 ## Desplegar en Streamlit Community Cloud (gratis)
 
