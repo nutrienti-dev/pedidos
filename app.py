@@ -10,6 +10,7 @@ from gspread.utils import rowcol_to_a1
 from google.oauth2.credentials import Credentials as UserCredentials
 from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
+from googleapiclient.discovery import build as build_drive_service
 from datetime import date, datetime
 import difflib
 import re
@@ -17,6 +18,8 @@ import unicodedata
 import uuid
 import csv as csv_module
 import os
+import io
+import openpyxl
 from collections import Counter
 
 # --------------------------------------------------------------------------
@@ -32,7 +35,7 @@ st.set_page_config(
 CLIENTS_SHEET_ID = "1LGjtIWTwrWSUw3LKC8jTmj-NMlwhygbAelD_C3hL-tQ"
 CLIENTS_TAB_CANDIDATES = ["Datos", "DATOS", "datos"]
 
-PRODUCTS_SHEET_ID = "1b2_qDS9GMZGCJnAFBM690DBj3b_4qp5tqLDuQo7U5Bw"
+PRODUCTS_SHEET_ID = "11oSUTlnB-FZvpQcTxnk2lndeJZt5nRNne3PCv6MJgsE"
 PRODUCTS_TAB_CANDIDATES = ["Hoja 1", "Sheet1", "Productos"]
 
 DEST_SHEET_ID = "1WKkqvaM27VDxCviwNPWKEI5xKblDH-vgQEi9_5oiQNY"
@@ -45,6 +48,23 @@ DEST_SHEET_ID = "1WKkqvaM27VDxCviwNPWKEI5xKblDH-vgQEi9_5oiQNY"
 # reales -- ver README para mas contexto.
 RAZONES_SOCIALES_SHEET_ID = "1_IbW0IhpSxiCVL9Xn97XsIe5wE4AWnWMjG8szdoWSNI"
 UMBRAL_NOMBRE_COMERCIAL = 0.72
+
+# "BASE DE DATOS CLIENTES ACTIVOS.xlsx": base de clientes de World Office
+# (archivo Office subido a Drive -- se descarga con la API de Drive y se lee
+# con openpyxl, la API de Sheets no puede leerlo directamente). De aca sale
+# la razon social OFICIAL y el NIT de cada cliente, para mostrarlos en la
+# hoja de pedidos. Portado de facturacion_repo/lib/data.py (load_client_master)
+# y lib/matching.py (find_client_master_by_razon), donde ya se uso con datos
+# reales -- ver README para mas contexto.
+CLIENTS_MASTER_FILE_ID = "16GFApKVxoQ1mVURvCpgbDGNmwjCGbeka"
+UMBRAL_CLIENTE_MASTER = 0.60
+
+# Sufijos legales comunes en razones sociales colombianas, para poder
+# comparar "LA BIFERIA S A" contra "La biferia" ignorando el tipo societario.
+LEGAL_SUFFIXES = {
+    "s.a.s", "sas", "s.a", "sa", "s a", "ltda", "cia", "compania", "compania.",
+    "e.u", "eu", "y cia", "and cia",
+}
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -123,6 +143,33 @@ def get_gspread_client():
     return None
 
 
+@st.cache_resource(show_spinner=False)
+def get_drive_service():
+    """Cliente de la API de Drive (distinto del cliente de gspread/Sheets),
+    necesario solo para descargar BASE DE DATOS CLIENTES ACTIVOS.xlsx, que es
+    un archivo Office y la API de Sheets no puede leerlo directamente. Usa
+    las mismas credenciales OAuth / cuenta de servicio que get_gspread_client."""
+    if "gcp_oauth" in st.secrets:
+        o = st.secrets["gcp_oauth"]
+        creds = UserCredentials(
+            token=None,
+            refresh_token=o["refresh_token"],
+            token_uri=o.get("token_uri", "https://oauth2.googleapis.com/token"),
+            client_id=o["client_id"],
+            client_secret=o["client_secret"],
+            scopes=SCOPES,
+        )
+        creds.refresh(Request())
+        return build_drive_service("drive", "v3", credentials=creds, cache_discovery=False)
+
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = SACredentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        return build_drive_service("drive", "v3", credentials=creds, cache_discovery=False)
+
+    return None
+
+
 def _find_worksheet(sh, candidates):
     titles = {ws.title.strip().lower(): ws for ws in sh.worksheets()}
     for c in candidates:
@@ -176,6 +223,18 @@ def _similarity(a, b):
     if not a or not b:
         return 0.0
     return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def strip_legal_suffix(name_norm):
+    """Quita sufijos societarios (SAS, S.A., LTDA, ...) del final de una
+    razon social ya normalizada, para poder comparar 'LA BIFERIA S A'
+    contra 'La biferia' sin que el tipo societario estorbe."""
+    words = name_norm.split()
+    while words and words[-1] in LEGAL_SUFFIXES:
+        words.pop()
+    while len(words) >= 2 and " ".join(words[-2:]) in LEGAL_SUFFIXES:
+        words = words[:-2]
+    return " ".join(words)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -251,14 +310,101 @@ def resolve_cliente(cliente_texto, clients, nc_rows):
     2) si el mapa no tiene un match confiable (sheet no cargo, punto nuevo
        que aun no esta en el mapa, etc.), respaldo: comparar directo contra
        la lista de clientes conocidos (best_client_match).
-    Devuelve (cliente_sugerido, similitud_0_a_100, fuente) donde fuente es
-    "mapa" o "lista" (para trazabilidad si hace falta depurar).
+    Devuelve (cliente_sugerido, similitud_0_a_100, fuente, razon_social)
+    donde fuente es "mapa" o "lista" (para trazabilidad si hace falta
+    depurar) y razon_social es la razon social del mapa cuando fuente ==
+    "mapa" (None en el caso de respaldo -- ahi no tenemos de donde sacarla).
     """
-    _, nombre_comercial, score_mapa = match_nombre_comercial(cliente_texto, nc_rows)
+    razon_social, nombre_comercial, score_mapa = match_nombre_comercial(cliente_texto, nc_rows)
     if nombre_comercial:
-        return nombre_comercial, score_mapa, "mapa"
+        return nombre_comercial, score_mapa, "mapa", razon_social
     sugerido, similitud = best_client_match(cliente_texto, clients)
-    return sugerido, similitud, "lista"
+    return sugerido, similitud, "lista", None
+
+
+# --------------------------------------------------------------------------
+# Razon social OFICIAL + NIT, a partir de la razon social del mapa de
+# nombres comerciales (resolve_cliente, arriba). Portado de
+# facturacion_repo/lib/data.py (load_client_master) y lib/matching.py
+# (find_client_master_by_razon), donde ya se uso con datos reales.
+# --------------------------------------------------------------------------
+_CLIENT_COLS = {
+    "razon_social": "Primer Nombre ó Razon Social",
+    "nit": "Identificación",
+}
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_client_master():
+    """Descarga BASE DE DATOS CLIENTES ACTIVOS.xlsx y extrae razon social +
+    NIT de cada cliente."""
+    drive_service = get_drive_service()
+    request = drive_service.files().get_media(fileId=CLIENTS_MASTER_FILE_ID)
+    raw = request.execute()
+    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+    ws = wb.active
+    all_rows = list(ws.iter_rows(values_only=True))
+    header = [str(h or "").strip() for h in all_rows[0]]
+    idx = {h: i for i, h in enumerate(header)}
+
+    def col(row, key):
+        header_name = _CLIENT_COLS[key]
+        i = idx.get(header_name)
+        if i is None or i >= len(row):
+            return ""
+        v = row[i]
+        return str(v).strip() if v is not None else ""
+
+    rows = []
+    for row in all_rows[1:]:
+        razon = col(row, "razon_social")
+        if not razon:
+            continue
+        rows.append({k: col(row, k) for k in _CLIENT_COLS})
+    return rows
+
+
+def find_client_master_by_razon(razon_social, client_rows):
+    """Busca en la base de clientes activos la fila cuya razon social
+    corresponde (ignorando sufijos societarios como SAS/S.A./LTDA) a
+    razon_social, tal como viene resuelta por match_nombre_comercial.
+    Devuelve el dict de la fila (razon_social, nit), o None."""
+    if not razon_social or not client_rows:
+        return None
+    target_norm = strip_legal_suffix(normalize(razon_social))
+    if not target_norm:
+        return None
+
+    best = None
+    best_score = 0.0
+    for row in client_rows:
+        razon_norm = strip_legal_suffix(normalize(row.get("razon_social", "")))
+        if not razon_norm:
+            continue
+        if razon_norm == target_norm:
+            return row
+        score = _similarity(razon_norm, target_norm)
+        if score > best_score:
+            best_score = score
+            best = row
+
+    if best is not None and best_score >= UMBRAL_CLIENTE_MASTER:
+        return best
+    return None
+
+
+def resolve_nit(razon_social_mapeada, client_master_rows):
+    """A partir de la razon social resuelta por resolve_cliente (fuente
+    "mapa"), busca el cliente en la base de clientes activos y devuelve
+    (razon_social_oficial, nit). Si no hay razon social del mapa, o no se
+    encuentra en la base de clientes, devuelve ("", "") -- no se arriesga a
+    adivinar el NIT de otro cliente."""
+    if not razon_social_mapeada:
+        return "", ""
+    row = find_client_master_by_razon(razon_social_mapeada, client_master_rows)
+    if not row:
+        return "", ""
+    return row.get("razon_social") or razon_social_mapeada, row.get("nit", "")
 
 
 @st.cache_data(ttl=300, show_spinner="Cargando lista de clientes...")
@@ -280,22 +426,25 @@ def load_clients():
 
 @st.cache_data(ttl=300, show_spinner="Cargando lista de productos...")
 def load_products():
-    # Lee de una hoja de Google Sheets nativa (Producto, Unidad, Precio) que
-    # se genero a partir de "BASE DE DATOS PRODUCTOS ACTIVOS.xlsx" -- ese
-    # archivo original es un Excel subido a Drive, y la API de Sheets no
-    # puede leer archivos de Office directamente, por eso se uso esta copia
-    # simplificada en formato nativo de Google Sheets.
+    # Lee de una hoja de Google Sheets nativa (Codigo, Producto, Unidad,
+    # Precio) que se genero a partir de "BASE DE DATOS PRODUCTOS
+    # ACTIVOS.xlsx" -- ese archivo original es un Excel subido a Drive, y la
+    # API de Sheets no puede leer archivos de Office directamente, por eso
+    # se uso esta copia simplificada en formato nativo de Google Sheets.
+    # La columna Codigo se agrego 2026-10-09 (viene de la columna "Código"
+    # del Excel original, ej. CET01, LB014).
     gc = get_gspread_client()
     sh = gc.open_by_key(PRODUCTS_SHEET_ID)
     ws = _find_worksheet(sh, PRODUCTS_TAB_CANDIDATES)
     values = ws.get_all_values()
     products = []
     for row in values[1:]:
-        if len(row) < 3:
+        if len(row) < 4:
             continue
-        desc = row[0].strip()
-        unidad = row[1].strip()
-        precio_raw = row[2].strip()
+        codigo = row[0].strip()
+        desc = row[1].strip()
+        unidad = row[2].strip()
+        precio_raw = row[3].strip()
         if not desc:
             continue
         try:
@@ -303,7 +452,9 @@ def load_products():
         except ValueError:
             precio = 0
         if precio > 0:
-            products.append({"producto": desc, "unidad": unidad or "und", "precio": precio})
+            products.append(
+                {"codigo": codigo, "producto": desc, "unidad": unidad or "und", "precio": precio}
+            )
     products.sort(key=lambda p: p["producto"].lower())
     return products
 
@@ -321,6 +472,9 @@ DEST_HEADERS = [
     "Estado",
     "Fecha Recepcion",
     "Observaciones",
+    "Cliente (Razon Social)",
+    "NIT",
+    "Codigo Producto",
 ]
 
 ESTADO_PENDIENTE = "Pendiente"
@@ -348,7 +502,17 @@ def ensure_dest_headers():
     return True
 
 
-def append_order_to_sheet(codigo_pedido, fecha_solicitud, fecha_despacho, cliente, cliente_sugerido, similitud, items):
+def append_order_to_sheet(
+    codigo_pedido,
+    fecha_solicitud,
+    fecha_despacho,
+    cliente,
+    cliente_sugerido,
+    similitud,
+    items,
+    razon_social="",
+    nit="",
+):
     gc = get_gspread_client()
     sh = gc.open_by_key(DEST_SHEET_ID)
     ws = sh.sheet1
@@ -368,6 +532,9 @@ def append_order_to_sheet(codigo_pedido, fecha_solicitud, fecha_despacho, client
                 ESTADO_PENDIENTE,
                 "",
                 "",
+                razon_social,
+                nit,
+                it.get("codigo", ""),
             ]
         )
     # append_rows uses the Sheets API's append endpoint, which is safe for
@@ -686,6 +853,20 @@ except Exception:
         icon="⚠️",
     )
 
+# Igual que el mapa de nombres comerciales: la base de clientes activos
+# (razon social oficial + NIT) es un "nice to have" para completar esas dos
+# columnas en la hoja de destino -- si falla, el pedido se sigue guardando
+# normalmente, solo sin razon social/NIT.
+try:
+    client_master_rows = load_client_master()
+except Exception:
+    client_master_rows = []
+    st.warning(
+        "No se pudo leer la base de clientes activos -- el pedido se "
+        "guardara sin Razon Social/NIT.",
+        icon="⚠️",
+    )
+
 if not clients:
     st.warning("No se encontraron clientes en la hoja de origen.")
 if not products:
@@ -746,6 +927,7 @@ with tab_pedido:
                             "producto": p["producto"],
                             "unidad": p["unidad"],
                             "cantidad": cantidad,
+                            "codigo": p.get("codigo", ""),
                         }
                     )
                     st.rerun()
@@ -768,13 +950,16 @@ with tab_pedido:
                 elif not st.session_state.cart:
                     st.warning("Agrega al menos un producto antes de continuar.")
                 else:
-                    sugerido, similitud, _fuente = resolve_cliente(cliente, clients, nc_rows)
+                    sugerido, similitud, _fuente, razon_social_mapa = resolve_cliente(cliente, clients, nc_rows)
+                    razon_social, nit = resolve_nit(razon_social_mapa, client_master_rows)
                     st.session_state.review_data = {
                         "cliente": cliente.strip(),
                         "cliente_sugerido": sugerido,
                         "similitud": similitud,
                         "fecha_solicitud": fecha_solicitud,
                         "fecha_despacho": fecha_despacho,
+                        "razon_social": razon_social,
+                        "nit": nit,
                     }
                     st.session_state.step = "review"
                     st.rerun()
@@ -792,6 +977,12 @@ with tab_pedido:
         r1.metric("Punto", data["cliente"])
         r2.metric("Fecha solicitud", data["fecha_solicitud"].strftime("%Y-%m-%d"))
         r3.metric("Fecha despacho", data["fecha_despacho"].strftime("%Y-%m-%d"))
+
+        if data.get("razon_social"):
+            st.caption(
+                f"Facturacion: **{data['razon_social']}**"
+                + (f" · NIT {data['nit']}" if data.get("nit") else " · NIT no encontrado")
+            )
 
         st.write("")
         for it in st.session_state.cart:
@@ -816,6 +1007,8 @@ with tab_pedido:
                     cliente_sugerido=data["cliente_sugerido"],
                     similitud=data["similitud"],
                     items=st.session_state.cart,
+                    razon_social=data.get("razon_social", ""),
+                    nit=data.get("nit", ""),
                 )
                 load_pedidos_rows.clear()
                 st.session_state.last_codigo_pedido = codigo_pedido
@@ -854,7 +1047,7 @@ with tab_estado:
     )
 
     if busqueda and busqueda.strip():
-        sugerido, similitud, _fuente = resolve_cliente(busqueda, clients, nc_rows)
+        sugerido, similitud, _fuente, _razon_social_mapa = resolve_cliente(busqueda, clients, nc_rows)
         if not sugerido or similitud < 60:
             st.info("No encontramos un punto que coincida con ese nombre.")
         else:
