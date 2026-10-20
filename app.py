@@ -11,7 +11,7 @@ from google.oauth2.credentials import Credentials as UserCredentials
 from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build as build_drive_service
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import difflib
 import re
 import unicodedata
@@ -822,6 +822,29 @@ if "step" not in st.session_state:
     st.session_state.step = "form"
 if "last_codigo_pedido" not in st.session_state:
     st.session_state.last_codigo_pedido = None
+# Fecha de despacho deseada: por defecto, 2 dias despues de la fecha de
+# solicitud (pedido explicito del usuario, 2026-10-20). Se inicializan
+# aca -- junto al resto del estado de sesion -- y se sincronizan con el
+# callback _sync_fecha_despacho de mas abajo cada vez que cambia la fecha
+# de solicitud; el usuario puede corregir la fecha de despacho a mano
+# despues sin que se le sobreescriba solo.
+if "fecha_solicitud_input" not in st.session_state:
+    st.session_state.fecha_solicitud_input = date.today()
+if "fecha_despacho_input" not in st.session_state:
+    st.session_state.fecha_despacho_input = date.today() + timedelta(days=2)
+
+
+def _sync_fecha_despacho():
+    """Callback de on_change del date_input de 'Fecha de la solicitud':
+    recalcula la fecha de despacho sugerida a 2 dias despues de la nueva
+    fecha de solicitud. Como corre antes del rerun y escribe directo en
+    session_state (no via el parametro value= del widget), es el patron
+    recomendado por Streamlit para sincronizar dos widgets sin chocar con
+    el valor que el usuario ya haya escrito."""
+    st.session_state.fecha_despacho_input = (
+        st.session_state.fecha_solicitud_input + timedelta(days=2)
+    )
+
 
 gc = get_gspread_client()
 if gc is None:
@@ -888,9 +911,16 @@ with tab_pedido:
     if st.session_state.step == "form":
         col1, col2 = st.columns(2)
         with col1:
-            fecha_solicitud = st.date_input("Fecha de la solicitud", value=date.today())
+            fecha_solicitud = st.date_input(
+                "Fecha de la solicitud",
+                key="fecha_solicitud_input",
+                on_change=_sync_fecha_despacho,
+            )
         with col2:
-            fecha_despacho = st.date_input("Fecha de despacho deseada", value=date.today())
+            fecha_despacho = st.date_input(
+                "Fecha de despacho deseada",
+                key="fecha_despacho_input",
+            )
 
         cliente = st.text_input(
             "Nombre de Punto",
