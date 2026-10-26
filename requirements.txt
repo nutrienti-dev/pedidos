@@ -4,3 +4,4 @@ google-auth>=2.30
 google-api-python-client>=2.130
 pandas>=2.2
 openpyxl>=3.1
+tzdata>=2024.1
