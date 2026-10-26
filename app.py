@@ -12,6 +12,7 @@ from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build as build_drive_service
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 import difflib
 import re
 import unicodedata
@@ -21,6 +22,11 @@ import os
 import io
 import openpyxl
 from collections import Counter
+
+# Streamlit Community Cloud corre los servidores en UTC -- sin esto,
+# "Fecha y Hora de Registro" quedaria con la hora de UTC en vez de la hora
+# real de Colombia, que es lo que le sirve al negocio.
+BOGOTA_TZ = ZoneInfo("America/Bogota")
 
 # --------------------------------------------------------------------------
 # Configuracion
@@ -39,6 +45,25 @@ PRODUCTS_SHEET_ID = "11oSUTlnB-FZvpQcTxnk2lndeJZt5nRNne3PCv6MJgsE"
 PRODUCTS_TAB_CANDIDATES = ["Hoja 1", "Sheet1", "Productos"]
 
 DEST_SHEET_ID = "1WKkqvaM27VDxCviwNPWKEI5xKblDH-vgQEi9_5oiQNY"
+
+# Dias fijos de despacho del negocio (2026-10-26, pedido explicito del
+# cliente via WhatsApp): solo despachan martes, jueves y sabado. date.weekday()
+# de Python: lunes=0, martes=1, miercoles=2, jueves=3, viernes=4, sabado=5,
+# domingo=6.
+DIAS_DESPACHO_VALIDOS = {1, 3, 5}  # Martes, Jueves, Sabado
+
+
+def proxima_fecha_despacho_valida(desde):
+    """Primera fecha, ESTRICTAMENTE despues de `desde`, que caiga en uno de
+    los dias fijos de despacho (martes/jueves/sabado). Nunca devuelve el
+    mismo dia que `desde` aunque `desde` ya sea un dia valido -- el negocio
+    confirmo que siempre debe saltar al siguiente, para dar tiempo a
+    alistar el pedido (si piden un martes, el despacho sugerido es el
+    jueves, no ese mismo martes)."""
+    candidata = desde + timedelta(days=1)
+    while candidata.weekday() not in DIAS_DESPACHO_VALIDOS:
+        candidata += timedelta(days=1)
+    return candidata
 
 # "RAZONES SOCIALES - NOMBRES COMERCIALES": fuente de verdad para resolver
 # el nombre del punto (nombre comercial) cuando no se parece en nada a la
@@ -475,6 +500,7 @@ DEST_HEADERS = [
     "Cliente (Razon Social)",
     "NIT",
     "Codigo Producto",
+    "Fecha y Hora de Registro",
 ]
 
 ESTADO_PENDIENTE = "Pendiente"
@@ -516,6 +542,11 @@ def append_order_to_sheet(
     gc = get_gspread_client()
     sh = gc.open_by_key(DEST_SHEET_ID)
     ws = sh.sheet1
+    # Momento real en que se confirmo el pedido en el sistema (hora de
+    # Colombia, no la del selector de fecha de "Fecha Solicitud", que no
+    # tiene hora) -- pedido explicito del cliente, 2026-10-26. Una sola
+    # marca de tiempo para todas las filas de este pedido.
+    fecha_hora_registro = datetime.now(BOGOTA_TZ).strftime("%Y-%m-%d %H:%M:%S")
     rows = []
     for it in items:
         rows.append(
@@ -535,6 +566,7 @@ def append_order_to_sheet(
                 razon_social,
                 nit,
                 it.get("codigo", ""),
+                fecha_hora_registro,
             ]
         )
     # append_rows uses the Sheets API's append endpoint, which is safe for
@@ -822,27 +854,31 @@ if "step" not in st.session_state:
     st.session_state.step = "form"
 if "last_codigo_pedido" not in st.session_state:
     st.session_state.last_codigo_pedido = None
-# Fecha de despacho deseada: por defecto, 2 dias despues de la fecha de
-# solicitud (pedido explicito del usuario, 2026-10-20). Se inicializan
-# aca -- junto al resto del estado de sesion -- y se sincronizan con el
-# callback _sync_fecha_despacho de mas abajo cada vez que cambia la fecha
-# de solicitud; el usuario puede corregir la fecha de despacho a mano
-# despues sin que se le sobreescriba solo.
+# Fecha de despacho deseada: por defecto, la proxima fecha de despacho
+# valida (martes/jueves/sabado, ver DIAS_DESPACHO_VALIDOS arriba) despues
+# de la fecha de solicitud -- ajustado 2026-10-26 a partir del "+2 dias"
+# anterior (2026-10-20), que a veces caia en un dia sin despacho (ej.
+# pedir un lunes daba miercoles, que no es un dia real de despacho). Se
+# inicializan aca -- junto al resto del estado de sesion -- y se
+# sincronizan con el callback _sync_fecha_despacho de mas abajo cada vez
+# que cambia la fecha de solicitud; el usuario puede corregir la fecha de
+# despacho a mano despues sin que se le sobreescriba solo.
 if "fecha_solicitud_input" not in st.session_state:
     st.session_state.fecha_solicitud_input = date.today()
 if "fecha_despacho_input" not in st.session_state:
-    st.session_state.fecha_despacho_input = date.today() + timedelta(days=2)
+    st.session_state.fecha_despacho_input = proxima_fecha_despacho_valida(date.today())
 
 
 def _sync_fecha_despacho():
     """Callback de on_change del date_input de 'Fecha de la solicitud':
-    recalcula la fecha de despacho sugerida a 2 dias despues de la nueva
-    fecha de solicitud. Como corre antes del rerun y escribe directo en
-    session_state (no via el parametro value= del widget), es el patron
-    recomendado por Streamlit para sincronizar dos widgets sin chocar con
-    el valor que el usuario ya haya escrito."""
-    st.session_state.fecha_despacho_input = (
-        st.session_state.fecha_solicitud_input + timedelta(days=2)
+    recalcula la fecha de despacho sugerida a la proxima fecha valida
+    (martes/jueves/sabado) despues de la nueva fecha de solicitud. Como
+    corre antes del rerun y escribe directo en session_state (no via el
+    parametro value= del widget), es el patron recomendado por Streamlit
+    para sincronizar dos widgets sin chocar con el valor que el usuario ya
+    haya escrito."""
+    st.session_state.fecha_despacho_input = proxima_fecha_despacho_valida(
+        st.session_state.fecha_solicitud_input
     )
 
 
