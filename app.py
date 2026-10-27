@@ -46,24 +46,39 @@ PRODUCTS_TAB_CANDIDATES = ["Hoja 1", "Sheet1", "Productos"]
 
 DEST_SHEET_ID = "1WKkqvaM27VDxCviwNPWKEI5xKblDH-vgQEi9_5oiQNY"
 
-# Dias fijos de despacho del negocio (2026-10-26, pedido explicito del
-# cliente via WhatsApp): solo despachan martes, jueves y sabado. date.weekday()
-# de Python: lunes=0, martes=1, miercoles=2, jueves=3, viernes=4, sabado=5,
-# domingo=6.
-DIAS_DESPACHO_VALIDOS = {1, 3, 5}  # Martes, Jueves, Sabado
+# Tabla fija de dias de despacho segun el dia de la semana en que se hace
+# la solicitud (reemplaza la version anterior del 2026-10-26, que solo
+# buscaba "la proxima fecha martes/jueves/sabado" sin mas -- eso daba,
+# por ejemplo, miercoles -> jueves, que el negocio NO quiere). Pedido
+# explicito del cliente final de Nutrienti (via WhatsApp, reenviado por
+# el usuario), 2026-10-27:
+#
+#     Lunes     -> Jueves
+#     Martes    -> Jueves
+#     Miercoles -> Sabado
+#     Jueves    -> Sabado
+#     Viernes   -> Martes (de la semana siguiente)
+#     Sabado    -> Martes
+#     Domingo   -> Martes
+#
+# date.weekday() de Python: lunes=0, martes=1, miercoles=2, jueves=3,
+# viernes=4, sabado=5, domingo=6. El valor de cada entrada es cuantos
+# dias hay que sumarle a la fecha de solicitud para llegar al despacho.
+DIAS_HASTA_DESPACHO = {
+    0: 3,  # Lunes -> Jueves
+    1: 2,  # Martes -> Jueves
+    2: 3,  # Miercoles -> Sabado
+    3: 2,  # Jueves -> Sabado
+    4: 4,  # Viernes -> Martes
+    5: 3,  # Sabado -> Martes
+    6: 2,  # Domingo -> Martes
+}
 
 
-def proxima_fecha_despacho_valida(desde):
-    """Primera fecha, ESTRICTAMENTE despues de `desde`, que caiga en uno de
-    los dias fijos de despacho (martes/jueves/sabado). Nunca devuelve el
-    mismo dia que `desde` aunque `desde` ya sea un dia valido -- el negocio
-    confirmo que siempre debe saltar al siguiente, para dar tiempo a
-    alistar el pedido (si piden un martes, el despacho sugerido es el
-    jueves, no ese mismo martes)."""
-    candidata = desde + timedelta(days=1)
-    while candidata.weekday() not in DIAS_DESPACHO_VALIDOS:
-        candidata += timedelta(days=1)
-    return candidata
+def fecha_despacho_segun_dia_solicitud(fecha_solicitud):
+    """Fecha de despacho sugerida segun el dia de la semana de la fecha de
+    solicitud, siguiendo la tabla fija DIAS_HASTA_DESPACHO de arriba."""
+    return fecha_solicitud + timedelta(days=DIAS_HASTA_DESPACHO[fecha_solicitud.weekday()])
 
 # "RAZONES SOCIALES - NOMBRES COMERCIALES": fuente de verdad para resolver
 # el nombre del punto (nombre comercial) cuando no se parece en nada a la
@@ -854,30 +869,32 @@ if "step" not in st.session_state:
     st.session_state.step = "form"
 if "last_codigo_pedido" not in st.session_state:
     st.session_state.last_codigo_pedido = None
-# Fecha de despacho deseada: por defecto, la proxima fecha de despacho
-# valida (martes/jueves/sabado, ver DIAS_DESPACHO_VALIDOS arriba) despues
-# de la fecha de solicitud -- ajustado 2026-10-26 a partir del "+2 dias"
-# anterior (2026-10-20), que a veces caia en un dia sin despacho (ej.
-# pedir un lunes daba miercoles, que no es un dia real de despacho). Se
-# inicializan aca -- junto al resto del estado de sesion -- y se
-# sincronizan con el callback _sync_fecha_despacho de mas abajo cada vez
-# que cambia la fecha de solicitud; el usuario puede corregir la fecha de
-# despacho a mano despues sin que se le sobreescriba solo.
+# Fecha de despacho deseada: por defecto, segun la tabla fija
+# DIAS_HASTA_DESPACHO de arriba (lunes/martes->jueves,
+# miercoles/jueves->sabado, viernes/sabado/domingo->martes) -- ajustado
+# 2026-10-27 a partir de la version anterior (2026-10-26), que buscaba
+# "la proxima martes/jueves/sabado" sin mas y por eso no coincidia con
+# esta tabla en casos como miercoles (antes daba jueves, el negocio
+# siempre quiso sabado). Se inicializan aca -- junto al resto del estado
+# de sesion -- y se sincronizan con el callback _sync_fecha_despacho de
+# mas abajo cada vez que cambia la fecha de solicitud; el usuario puede
+# corregir la fecha de despacho a mano despues sin que se le sobreescriba
+# solo.
 if "fecha_solicitud_input" not in st.session_state:
     st.session_state.fecha_solicitud_input = date.today()
 if "fecha_despacho_input" not in st.session_state:
-    st.session_state.fecha_despacho_input = proxima_fecha_despacho_valida(date.today())
+    st.session_state.fecha_despacho_input = fecha_despacho_segun_dia_solicitud(date.today())
 
 
 def _sync_fecha_despacho():
     """Callback de on_change del date_input de 'Fecha de la solicitud':
-    recalcula la fecha de despacho sugerida a la proxima fecha valida
-    (martes/jueves/sabado) despues de la nueva fecha de solicitud. Como
+    recalcula la fecha de despacho sugerida segun la tabla fija
+    DIAS_HASTA_DESPACHO, a partir de la nueva fecha de solicitud. Como
     corre antes del rerun y escribe directo en session_state (no via el
     parametro value= del widget), es el patron recomendado por Streamlit
     para sincronizar dos widgets sin chocar con el valor que el usuario ya
     haya escrito."""
-    st.session_state.fecha_despacho_input = proxima_fecha_despacho_valida(
+    st.session_state.fecha_despacho_input = fecha_despacho_segun_dia_solicitud(
         st.session_state.fecha_solicitud_input
     )
 
