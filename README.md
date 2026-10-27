@@ -20,17 +20,20 @@ subidos a GitHub por el usuario y confirmados funcionando en produccion
 biferia santafe" → razon social `LA BIFERIA S A`, NIT `830135186`.
 
 **⚠️ Pendiente de subir a GitHub (no bloqueante, la app funciona bien
-sin esto, son solo mejoras de UX/datos)**:
-4. Fecha de despacho por defecto = solicitud + 2 dias (2026-10-20) —
-   **ya corregida** por el punto 5 de abajo, antes de subirse a GitHub,
-   asi que en la practica solo queda pendiente subir la version 5.
-5. Fecha de despacho por defecto ajustada a dias fijos de despacho
-   (martes/jueves/sabado) + nueva columna "Fecha y Hora de Registro"
-   (2026-10-26, ver seccion propia mas abajo) — pedido del cliente final
-   de Nutrienti vía WhatsApp, reenviado por el usuario.
+sin esto, son solo mejoras de UX/datos)**. La logica de fecha de despacho
+paso por 3 iteraciones seguidas sin llegar a subirse a GitHub ninguna de
+las 2 primeras (el negocio la siguio afinando antes de desplegar nada) —
+solo la ultima version (2026-10-27) importa para el proximo commit:
+4. ~~Fecha de despacho = solicitud + 2 dias~~ (2026-10-20) — superada.
+5. ~~Fecha de despacho = proxima martes/jueves/sabado~~ (2026-10-26) —
+   superada (no distinguia bien cada dia, ver seccion propia).
+6. **Fecha de despacho segun tabla fija por dia de la semana** + nueva
+   columna "Fecha y Hora de Registro" (2026-10-26/27, ver seccion propia
+   mas abajo) — esta es la version vigente en `app.py` local.
 
-Ambos cambios ya estan aplicados en `app.py` local (entregado + escrito
-vía bridge el 2026-10-26) — falta que el usuario los suba a GitHub.
+Ya esta aplicado en `app.py` local (entregado + escrito vía bridge el
+2026-10-27) — falta que el usuario lo suba a GitHub junto con el
+`requirements.txt` actualizado (agrega `tzdata`).
 
 ## ⚠️ Incidente 2026-10-09: hoja de productos borrada — RESUELTO Y DESPLEGADO
 
@@ -144,75 +147,99 @@ paso pidio una columna mas: el **codigo interno del producto** (ej.
   si el producto no tiene codigo, no deberia pasar con el catalogo
   actual).
 
-## ✨ Feature 2026-10-20: Fecha de despacho por defecto = solicitud + 2 dias — SUPERADA por la de abajo
+## 🔁 Historia de la fecha de despacho por defecto (3 iteraciones, 2026-10-20 → 2026-10-27)
 
-Primera iteracion: el campo "Fecha de despacho deseada" dejo de ser igual
-a "Fecha de la solicitud" por defecto y paso a ser **2 dias despues**
-(ej. solicitud el 20 → despacho sugerido el 22), usando `key` +
-`on_change` en los `st.date_input` (patron recomendado por Streamlit para
-sincronizar dos widgets sin `StreamlitAPIException`). **Esta version nunca
-se llego a subir a GitHub** — el cliente final detecto un problema antes
-(ver seccion siguiente) y se corrigio localmente antes del primer commit.
+El campo "Fecha de despacho deseada" paso por 3 versiones seguidas, cada
+una afinando la anterior a partir de feedback real del negocio. Solo la
+**ultima (2026-10-27) es la version vigente** — las 2 primeras ni
+llegaron a subirse a GitHub.
 
-## ✨ Feature 2026-10-26: Fecha de despacho solo martes/jueves/sabado + hora de registro automatica
+**v1 (2026-10-20) — "+2 dias" fijo**: el default dejo de ser igual a
+"Fecha de la solicitud" y paso a ser 2 dias despues. Implementado con
+`key` + `on_change` en los `st.date_input` (patron recomendado por
+Streamlit para sincronizar dos widgets sin `StreamlitAPIException`, que
+se sigue usando en las versiones siguientes). **Problema detectado por el
+cliente final** (vía WhatsApp, reenviado por el usuario, 2026-10-26): el
+negocio solo despacha martes/jueves/sabado, y "+2 dias" a veces caia en
+un dia sin despacho real (ej. pedir lunes daba miercoles).
 
-El cliente final de Nutrienti escribio (vía WhatsApp, reenviado por el
-usuario) que el ajuste de "+2 dias" del 2026-10-20 tenia un problema: si
-pedian un lunes, el despacho sugerido caia miercoles, **pero el negocio
-solo despacha martes, jueves y sabado** — esa fecha sugerida no era real.
-Pidio dos cosas: (1) que el despacho por defecto caiga siempre en uno de
-esos 3 dias fijos, y (2) que quede registrada automaticamente la hora en
-que se hizo la solicitud.
+**v2 (2026-10-26) — "proxima fecha martes/jueves/sabado"**: se reemplazo
+el "+2 dias" por una funcion que buscaba la primera fecha, estrictamente
+despues de la solicitud, que cayera en uno de esos 3 dias (confirmado con
+el usuario vía `AskUserQuestion`: si la solicitud ya caia en un dia
+valido, saltar al siguiente, nunca mismo dia). En la misma vuelta se
+agrego tambien la columna "Fecha y Hora de Registro" (ver mas abajo, esa
+parte **no cambio** en la v3). **Problema**: el negocio aclaro al dia
+siguiente (2026-10-27) que no querian "la proxima valida sin mas" sino
+una regla especifica por cada dia de la semana — con v2, miercoles
+hubiera dado jueves, pero el negocio siempre quiso sabado para los
+pedidos de miercoles.
 
-**Decisiones confirmadas con el usuario** (via `AskUserQuestion`):
-- Si la fecha de solicitud ya cae en un dia valido (ej. piden un martes),
-  el despacho sugerido **salta al siguiente dia valido** (jueves), nunca
-  queda en el mismo dia — le da tiempo al negocio de alistar el pedido.
-- La hora de registro va en una **columna nueva al final** de la hoja
-  ("Fecha y Hora de Registro"), separada de "Fecha Solicitud" (que sigue
-  siendo la fecha que el punto elige en el formulario, sin hora).
+**v3 (2026-10-27) — tabla fija por dia de la semana — VIGENTE**: el
+usuario paso la tabla completa que el cliente final definio:
 
-**Implementacion**:
+| Pedido del... | Se despacha el... |
+|---|---|
+| Lunes | Jueves |
+| Martes | Jueves |
+| Miercoles | Sabado |
+| Jueves | Sabado |
+| Viernes | Martes (semana siguiente) |
+| Sabado | Martes |
+| Domingo | Martes |
 
-- Nueva constante `DIAS_DESPACHO_VALIDOS = {1, 3, 5}` (martes, jueves,
-  sabado segun `date.weekday()` de Python: lunes=0).
-- Nueva funcion `proxima_fecha_despacho_valida(desde)`: primera fecha
-  **estrictamente despues** de `desde` que caiga en uno de esos 3 dias.
-  Reemplaza la logica de "+2 dias" tanto en la inicializacion de
-  `fecha_despacho_input` como en el callback `_sync_fecha_despacho()`
-  (que sigue disparandose con `on_change` del date_input de "Fecha de la
-  solicitud", mismo mecanismo que antes).
-- El campo de fecha de despacho sigue siendo un `st.date_input` normal —
-  Streamlit no permite restringir que dias de la semana se pueden
-  seleccionar, asi que el usuario **puede seguir corrigiendolo a mano**
-  si hace falta (el ajuste es solo al valor sugerido por defecto).
+**Implementacion v3**:
+- Nueva constante `DIAS_HASTA_DESPACHO`: dict `{weekday_solicitud: dias_a_sumar}`
+  (`date.weekday()` de Python: lunes=0 ... domingo=6) — `{0:3, 1:2, 2:3,
+  3:2, 4:4, 5:3, 6:2}`. Reemplaza por completo la `DIAS_DESPACHO_VALIDOS`
+  / `proxima_fecha_despacho_valida()` de la v2 (funciones/constantes
+  eliminadas, no quedan referencias viejas en el codigo).
+- Nueva funcion `fecha_despacho_segun_dia_solicitud(fecha_solicitud)`:
+  `fecha_solicitud + timedelta(days=DIAS_HASTA_DESPACHO[fecha_solicitud.weekday()])`.
+  Se usa tanto para el valor inicial de `fecha_despacho_input` como en el
+  callback `_sync_fecha_despacho()` (mismo mecanismo `on_change` que las
+  versiones anteriores).
+- Verificado con un barrido de una semana completa (lunes a domingo)
+  contra la tabla exacta de arriba — coincide en los 7 casos.
+- El campo sigue siendo un `st.date_input` normal (Streamlit no permite
+  restringir dias de la semana seleccionables), asi que el usuario puede
+  seguir corrigiendo la fecha a mano si hace falta; el ajuste es solo al
+  valor sugerido por defecto.
+
+## ✨ Feature 2026-10-26: Fecha y Hora de Registro automatica — DESPLEGABLE (no cambio en v3)
+
+El cliente final tambien pidio que quedara registrada automaticamente la
+hora real en que se hizo la solicitud (distinto de "Fecha Solicitud", que
+es la fecha que el punto elige a mano en el formulario, sin hora).
+Confirmado con el usuario vía `AskUserQuestion`: va en una **columna
+nueva al final** de la hoja, no mezclada con "Fecha Solicitud".
+
+**Implementacion** (sigue igual en la v3 de arriba, no se toco):
 - Nueva columna al final de `DEST_HEADERS`: **"Fecha y Hora de
-  Registro"**. `append_order_to_sheet()` calcula
-  `datetime.now(BOGOTA_TZ)` (zona horaria `America/Bogota` vía
-  `zoneinfo.ZoneInfo`, nueva constante `BOGOTA_TZ`) una sola vez por
-  pedido y la escribe en todas sus filas como `YYYY-MM-DD HH:MM:SS`.
-  Importante: Streamlit Community Cloud corre en UTC, por eso se fuerza
-  la zona horaria en vez de usar `datetime.now()` a secas.
-- Nueva dependencia en `requirements.txt`: `tzdata` (la base de datos
-  IANA de zonas horarias que `zoneinfo` necesita en Windows -- en Linux
-  normalmente ya esta en el sistema, pero `tzdata` no hace daño ahi y
-  evita que falle si el usuario corre la app localmente en Windows).
-- Verificado en code: barrido de una semana completa confirmando que
-  lunes/martes/miercoles/jueves/viernes/sabado/domingo resuelven
-  correctamente a martes/jueves/jueves/sabado/sabado/martes/martes.
+  Registro"**. `append_order_to_sheet()` calcula `datetime.now(BOGOTA_TZ)`
+  (zona horaria `America/Bogota` vía `zoneinfo.ZoneInfo`, nueva constante
+  `BOGOTA_TZ`) una sola vez por pedido y la escribe en todas sus filas
+  como `YYYY-MM-DD HH:MM:SS`. Streamlit Community Cloud corre en UTC, por
+  eso se fuerza la zona horaria en vez de usar `datetime.now()` a secas.
+- Nueva dependencia en `requirements.txt`: `tzdata` (base de datos IANA
+  de zonas horarias que `zoneinfo` necesita en Windows; en Linux
+  normalmente ya esta en el sistema, pero no hace daño ahi y evita que
+  falle si el usuario corre la app localmente en Windows).
 
-Archivo + requirements.txt entregados al usuario y escritos vía bridge en
-`D:\Otros_proyectos\nutrienti\facturacion\pedidos_repo\` — falta subir a
-GitHub (no bloqueante, ver bloque de estado arriba).
+Archivo + requirements.txt (v3 completa: tabla de despacho + hora de
+registro) entregados al usuario y escritos vía bridge en
+`D:\Otros_proyectos\nutrienti\facturacion\pedidos_repo\` 2026-10-27 —
+falta subir a GitHub (no bloqueante, ver bloque de estado arriba).
 
-## Como es la app hoy (actualizado 2026-10-26)
+## Como es la app hoy (actualizado 2026-10-27)
 
 La app tiene **2 pestañas**:
 
 - **📦 Hacer Pedido**: fecha solicitud (hoy por defecto) / fecha despacho
-  (proxima fecha valida — martes/jueves/sabado — despues de la solicitud,
-  ver seccion propia arriba) → nombre de "Nombre de Punto" (antes decia
-  "restaurante") → agregar productos+cantidad al carrito → revisar
+  (segun la tabla fija por dia de la semana, ver seccion propia arriba:
+  lunes/martes→jueves, miercoles/jueves→sabado,
+  viernes/sabado/domingo→martes) → nombre de "Nombre de Punto" (antes
+  decia "restaurante") → agregar productos+cantidad al carrito → revisar
   (muestra razon social/NIT si se resolvio) → confirmar. **Ya NO calcula
   ni muestra precios** (ver "Simplificacion de precios" abajo) — genera
   un **Codigo Pedido** unico al confirmar, y registra automaticamente la
@@ -253,7 +280,8 @@ al arrancar la app (`ensure_dest_headers()`), sin tocar filas de datos
 existentes — no hace falta editar la hoja a mano. Las columnas hasta
 "Codigo Producto" ya estan desplegadas y confirmadas funcionando; "Fecha
 y Hora de Registro" todavia esta solo en local (ver bloque de estado
-arriba).
+arriba). El **valor por defecto** que llega a "Fecha Despacho Deseada" ya
+usa la tabla fija v3 (2026-10-27).
 
 Nota menor sin resolver: 3 filas historicas de prueba (central cevicheria
 09-11, takami 09-15, osaki 09-15) parecen tener una columna extra entre
@@ -303,9 +331,9 @@ Existen DOS carpetas muy parecidas en la maquina del usuario:
 Si `device_list_dir` falla en la variante con espacio, es casi seguro que hay que usar la variante con guion bajo.
 
 ## Repo (pedidos_repo)
-- `app.py` — fecha solicitud/despacho (despacho = proxima martes/jueves/sabado despues de la solicitud, 2026-10-26), "Nombre de Punto", carrito de productos (con codigo de producto), revision/confirmacion (con razon social/NIT), envío a Sheet destino con Codigo Pedido + Fecha y Hora de Registro (hora Colombia, `BOGOTA_TZ`), tab de confirmacion de recepcion, matching mejorado (`resolve_cliente`), resolucion de NIT (`load_client_master`/`find_client_master_by_razon`/`resolve_nit`), matriz de precios en pausa, admin oculto. Soporta `gcp_oauth` (activo) y `gcp_service_account` (fallback). `PRODUCTS_SHEET_ID`, columnas Razon Social/NIT/Codigo Producto: desplegadas y confirmadas 2026-10-20. Dias fijos de despacho + Fecha y Hora de Registro: aplicados local 2026-10-26, pendiente de subir.
+- `app.py` — fecha solicitud/despacho (despacho segun tabla fija por dia de la semana, v3, 2026-10-27), "Nombre de Punto", carrito de productos (con codigo de producto), revision/confirmacion (con razon social/NIT), envío a Sheet destino con Codigo Pedido + Fecha y Hora de Registro (hora Colombia, `BOGOTA_TZ`), tab de confirmacion de recepcion, matching mejorado (`resolve_cliente`), resolucion de NIT (`load_client_master`/`find_client_master_by_razon`/`resolve_nit`), matriz de precios en pausa, admin oculto. Soporta `gcp_oauth` (activo) y `gcp_service_account` (fallback). `PRODUCTS_SHEET_ID`, columnas Razon Social/NIT/Codigo Producto: desplegadas y confirmadas 2026-10-20. Tabla de dias de despacho (v3) + Fecha y Hora de Registro: aplicados local 2026-10-27, pendiente de subir.
 - `requirements.txt` (incluye `google-api-python-client`, `openpyxl`, `tzdata`), `.gitignore`, `.streamlit/config.toml`, `.streamlit/secrets.toml` (real, no en git), `.streamlit/secrets.toml.example`, `README.md`, `precios_por_cliente.csv`, `precios_sin_resolver.csv`.
-- El README del repo tiene el detalle tecnico completo (columnas, matching, deploy, incidente de productos, razon social/NIT, codigo de producto) pero **no se actualizo todavia con las features de fecha de despacho / hora de registro del 2026-10-26** — pendiente la proxima vez que se toque el repo.
+- El README del repo tiene el detalle tecnico completo (columnas, matching, deploy, incidente de productos, razon social/NIT, codigo de producto) pero **no se actualizo todavia con las features de fecha de despacho / hora de registro del 2026-10-26/27** — pendiente la proxima vez que se toque el repo (van 3 vueltas seguidas sin actualizarlo, vale la pena priorizarlo la proxima vez).
 
 ## Pendientes explícitamente diferidos por el usuario
 - Cruzar cliente → ruta de despacho (para colorear en la hoja Remisión).
@@ -315,7 +343,7 @@ Si `device_list_dir` falla en la variante con espacio, es casi seguro que hay qu
 - Investigar la anomalia de 3 filas historicas con columna extra (baja prioridad).
 
 ## Siguientes pasos sugeridos (no confirmados aún por el usuario)
-- **Subir el `app.py` + `requirements.txt` actualizados a GitHub** con los dias fijos de despacho y "Fecha y Hora de Registro" (2026-10-26) — no bloqueante, pero sin esto el default en produccion sigue siendo "+2 dias" (sin restriccion de dia de la semana) y no se registra la hora.
-- Al tocar el repo de nuevo, actualizar `README.md` con las secciones de fecha de despacho / hora de registro (quedaron pendientes esta vuelta, 2 veces seguidas).
+- **Subir el `app.py` + `requirements.txt` actualizados a GitHub** con la tabla fija de dias de despacho (v3) y "Fecha y Hora de Registro" (2026-10-27) — no bloqueante, pero sin esto el default en produccion sigue siendo el de la v1 original ("+2 dias", que ni siquiera distinguia dias validos) y no se registra la hora.
+- Al tocar el repo de nuevo, actualizar `README.md` con la seccion de fecha de despacho (tabla completa) / hora de registro — quedo pendiente 3 vueltas seguidas.
 - Confirmar que el Codigo Producto que aparece en la hoja coincide con el codigo real de World Office para un par de productos (los codigos se extrajeron por posicion/orden de fila, no por un cruce campo a campo) — sigue sin confirmarse explicitamente por el usuario.
-- Una vez desplegado, confirmar con el cliente final que la fecha de despacho sugerida (martes/jueves/sabado) y la hora de registro se ven como esperaban.
+- Una vez desplegado, confirmar con el cliente final que la fecha de despacho sugerida (tabla v3) y la hora de registro se ven como esperaban — especialmente los casos viernes/sabado/domingo → martes siguiente, que son los que mas se alejan de la fecha de solicitud.
