@@ -80,6 +80,33 @@ def fecha_despacho_segun_dia_solicitud(fecha_solicitud):
     solicitud, siguiendo la tabla fija DIAS_HASTA_DESPACHO de arriba."""
     return fecha_solicitud + timedelta(days=DIAS_HASTA_DESPACHO[fecha_solicitud.weekday()])
 
+
+# Dias de la semana en los que SI hay despacho (Martes, Jueves, Sabado) --
+# son, literalmente, los unicos valores que puede tomar fecha_solicitud +
+# DIAS_HASTA_DESPACHO[...] arriba. Se usan para restringir el selector de
+# "Fecha de despacho deseada" a solo esos dias -- antes era un st.date_input
+# libre, y varios clientes estaban escogiendo cualquier dia del calendario;
+# la app lo guardaba igual y generaba pedidos con fechas de despacho que no
+# correspondian a ningun dia real de reparto. Agregado 2026-11-02 a raiz de
+# ese reporte.
+DIAS_DESPACHO_VALIDOS = {1, 3, 5}  # martes=1, jueves=3, sabado=5
+
+_DIAS_SEMANA_ES = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]
+
+
+def proximas_fechas_despacho_validas(desde, cantidad=6):
+    """Devuelve una lista ascendente de `cantidad` fechas (a partir de
+    `desde`, inclusive) que caen en un dia valido de despacho segun
+    DIAS_DESPACHO_VALIDOS. Se usa como las unicas opciones seleccionables
+    en el formulario, para que sea imposible escoger un dia sin despacho."""
+    fechas = []
+    cursor = desde
+    while len(fechas) < cantidad:
+        if cursor.weekday() in DIAS_DESPACHO_VALIDOS:
+            fechas.append(cursor)
+        cursor += timedelta(days=1)
+    return fechas
+
 # "RAZONES SOCIALES - NOMBRES COMERCIALES": fuente de verdad para resolver
 # el nombre del punto (nombre comercial) cuando no se parece en nada a la
 # razon social / nombre de cadena (ej. "Astoria" es un punto de "ALTAS
@@ -970,9 +997,15 @@ with tab_pedido:
                 on_change=_sync_fecha_despacho,
             )
         with col2:
-            fecha_despacho = st.date_input(
+            opciones_despacho = proximas_fechas_despacho_validas(
+                st.session_state.fecha_solicitud_input, cantidad=6
+            )
+            fecha_despacho = st.selectbox(
                 "Fecha de despacho deseada",
+                options=opciones_despacho,
+                format_func=lambda d: f"{d.strftime('%Y-%m-%d')} ({_DIAS_SEMANA_ES[d.weekday()]})",
                 key="fecha_despacho_input",
+                help="Solo se puede despachar martes, jueves o sabado.",
             )
 
         cliente = st.text_input(
@@ -1080,6 +1113,15 @@ with tab_pedido:
             st.rerun()
 
         if b2.button("✅ Confirmar y enviar pedido", type="primary", use_container_width=True):
+            if data["fecha_despacho"].weekday() not in DIAS_DESPACHO_VALIDOS:
+                # Respaldo por si llega una fecha invalida por cualquier via
+                # distinta al selector (p.ej. un valor viejo en session_state)
+                # -- nunca deberia guardarse un pedido con un dia sin despacho.
+                st.error(
+                    "La fecha de despacho debe caer en martes, jueves o "
+                    "sabado. Vuelve a 'Corregir pedido' y elige una fecha valida."
+                )
+                st.stop()
             codigo_pedido = f"{datetime.now():%y%m%d}-{uuid.uuid4().hex[:5].upper()}"
             try:
                 append_order_to_sheet(
