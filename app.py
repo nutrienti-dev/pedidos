@@ -1167,6 +1167,18 @@ with tab_pedido:
         if st.button("Hacer otro pedido"):
             st.session_state.cart = []
             st.session_state.step = "form"
+            # Se recalculan a mano en vez de dejar que los widgets "recuerden"
+            # su valor solo: el selectbox de fecha de despacho no se renderiza
+            # mientras step == "done", y se vio en produccion (2026-11-06) que
+            # al volver a "form" caia en la primera opcion de la lista (el
+            # mismo dia de la solicitud) en vez de mantener la sugerencia
+            # correcta de la tabla DIAS_HASTA_DESPACHO. Forzar ambos valores
+            # aca garantiza el default correcto en cada pedido nuevo, sin
+            # depender de ese comportamiento del widget.
+            st.session_state.fecha_solicitud_input = date.today()
+            st.session_state.fecha_despacho_input = fecha_despacho_segun_dia_solicitud(
+                date.today()
+            )
             st.rerun()
 
 # ==========================================================================
