@@ -948,8 +948,14 @@ except Exception as e:
 # el matching de respaldo en vez de detenerse.
 try:
     nc_rows = load_nombre_comercial_map()
-except Exception:
+except Exception as e:
     nc_rows = []
+    # Se imprime el error real a los logs de Streamlit Cloud (Manage app ->
+    # Logs) -- antes el except lo descartaba por completo y no quedaba
+    # registro de la causa real cuando aparecia el warning. Agregado
+    # 2026-11-05 a raiz de un reporte de este mismo tipo de warning en
+    # load_client_master (ver abajo).
+    print(f"[nc_rows] No se pudo leer el mapa de Razon Social/Nombre Comercial: {e!r}")
     st.warning(
         "No se pudo leer el mapa de Razon Social/Nombre Comercial -- se usa "
         "el matching de respaldo (lista de clientes) mientras tanto.",
@@ -962,8 +968,12 @@ except Exception:
 # normalmente, solo sin razon social/NIT.
 try:
     client_master_rows = load_client_master()
-except Exception:
+except Exception as e:
     client_master_rows = []
+    # Idem arriba: se imprime el error real a los logs de Streamlit Cloud
+    # para poder diagnosticar la causa la proxima vez que aparezca este
+    # warning, en vez de quedarnos solo con el mensaje generico.
+    print(f"[client_master_rows] No se pudo leer la base de clientes activos: {e!r}")
     st.warning(
         "No se pudo leer la base de clientes activos -- el pedido se "
         "guardara sin Razon Social/NIT.",
