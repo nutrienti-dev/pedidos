@@ -8,10 +8,13 @@
 #   2. Revisar y confirmar -> Render crea el servicio web "nutrienti-pedidos".
 #   3. DESPUES de creado (este archivo no puede traer secretos): ir al
 #      servicio -> pestaña "Environment" -> "Secret Files" -> "Add Secret
-#      File" -> Filename: .streamlit/secrets.toml -> pegar el MISMO
-#      contenido que ya tienen en D:\Otros_proyectos\nutrienti\facturacion\
-#      pedidos_repo\.streamlit\secrets.toml (las credenciales OAuth de
-#      Google, sin cambiar nada). Guardar -> Render redeploya solo.
+#      File" -> Filename: secrets.toml (SIN carpeta -- Render no permite
+#      "/" en el nombre del secret file, por eso el startCommand de abajo
+#      lo mueve a .streamlit/secrets.toml antes de arrancar) -> pegar el
+#      MISMO contenido que ya tienen en D:\Otros_proyectos\nutrienti\
+#      facturacion\pedidos_repo\.streamlit\secrets.toml (las credenciales
+#      OAuth de Google, sin cambiar nada). "Save, rebuild, and deploy" ->
+#      Render redeploya solo.
 #   4. Probar la URL que da Render (tipo nutrienti-pedidos.onrender.com) y
 #      confirmar que carga clientes/productos y que un pedido de prueba se
 #      guarda bien en la hoja de destino, antes de avisarle al cliente del
@@ -31,7 +34,11 @@ services:
     region: oregon
     branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false
+    # Render guarda el secret file como "secrets.toml" plano (no permite
+    # "/" en el nombre), disponible en runtime en /etc/secrets/secrets.toml.
+    # Antes de arrancar Streamlit, lo copiamos a .streamlit/secrets.toml,
+    # que es donde st.secrets espera encontrarlo.
+    startCommand: mkdir -p .streamlit && cp /etc/secrets/secrets.toml .streamlit/secrets.toml && streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false
     healthCheckPath: /_stcore/health
     envVars:
       - key: PYTHON_VERSION
