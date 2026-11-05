@@ -25,10 +25,19 @@
 # memoria (muchos clientes a la vez), cambiar aca a "1c-2g" desde el
 # dashboard de Render (Settings -> Instance Type) sin tener que rehacer
 # nada de esto.
+#
+# NOMBRE DEL SERVICIO (2026-11-06): se piden renombrar a
+# "cosechanutrienti-pedidos" (URL final:
+# https://cosechanutrienti-pedidos.onrender.com). IMPORTANTE: el orden es
+# primero renombrar el servicio YA EXISTENTE a mano en el dashboard de
+# Render (Settings -> Name), y DESPUES subir este archivo con el "name"
+# ya actualizado -- al reves (cambiar aca primero y subir) hay riesgo de
+# que Render interprete el nombre nuevo como un servicio distinto, en vez
+# de renombrar el que ya esta corriendo.
 
 services:
   - type: web
-    name: nutrienti-pedidos
+    name: cosechanutrienti-pedidos
     runtime: python
     plan: 0.5c-512mb
     region: oregon
