@@ -1,0 +1,38 @@
+# Blueprint de Render para desplegar pedidos_repo (Nutrienti - Ordenes de
+# Cosecha). Creado 2026-11-05 para la migracion desde Streamlit Community
+# Cloud -> Render, por problemas de concurrencia/sleep en el plan gratuito.
+#
+# Como usarlo (una sola vez, desde el dashboard de Render):
+#   1. New + -> Blueprint -> conectar el repo github.com/nutrienti-dev/pedidos
+#      (rama main). Render detecta este archivo automaticamente.
+#   2. Revisar y confirmar -> Render crea el servicio web "nutrienti-pedidos".
+#   3. DESPUES de creado (este archivo no puede traer secretos): ir al
+#      servicio -> pestaña "Environment" -> "Secret Files" -> "Add Secret
+#      File" -> Filename: .streamlit/secrets.toml -> pegar el MISMO
+#      contenido que ya tienen en D:\Otros_proyectos\nutrienti\facturacion\
+#      pedidos_repo\.streamlit\secrets.toml (las credenciales OAuth de
+#      Google, sin cambiar nada). Guardar -> Render redeploya solo.
+#   4. Probar la URL que da Render (tipo nutrienti-pedidos.onrender.com) y
+#      confirmar que carga clientes/productos y que un pedido de prueba se
+#      guarda bien en la hoja de destino, antes de avisarle al cliente del
+#      cambio de link.
+#
+# El plan "0.5c-512mb" es el equivalente al que se presupuesto ($7/mes,
+# 0.5 CPU / 512 MB RAM, siempre despierto). Si mas adelante hace falta mas
+# memoria (muchos clientes a la vez), cambiar aca a "1c-2g" desde el
+# dashboard de Render (Settings -> Instance Type) sin tener que rehacer
+# nada de esto.
+
+services:
+  - type: web
+    name: nutrienti-pedidos
+    runtime: python
+    plan: 0.5c-512mb
+    region: oregon
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
